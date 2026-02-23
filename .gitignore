@@ -1,0 +1,24 @@
+# --- Security & Database ---
+.env
+market.db
+
+# --- Environments & Dependencies ---
+venv/
+env/
+.venv/
+
+# --- Compiled Python Files ---
+__pycache__/
+cogs/__pycache__/
+*.pyc
+*.pyo
+
+# --- Bot Specific ---
+lootboxes/
+*.log
+
+# --- OS & Editor Files (Optional but Recommended) ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
