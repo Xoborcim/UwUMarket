@@ -33,7 +33,7 @@ class MarketBot(commands.Bot):
             await self.load_extension("cogs.items")
             await self.load_extension("cogs.jobs")
             await self.load_extension("cogs.rpg")
-            await self.load_extension("utilities.py")
+            await self.load_extension("cogs.utilities")
         except Exception as e:
             print(f"⚠️ Could not load cog: {e}")
 
