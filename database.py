@@ -510,9 +510,15 @@ def process_chat_income(user_id, amount, daily_cap=500.0):
     finally: conn.close()
 
 # --- TOWN SIMULATION HELPERS ---
+# --- TOWN SIMULATION HELPERS ---
 def get_town_state():
     conn = get_connection()
-    try: return dict(conn.execute("SELECT * FROM town WHERE id=1").fetchone())
+    try: 
+        town = dict(conn.execute("SELECT * FROM town WHERE id=1").fetchone())
+        # Add user count to the town state so the embed knows how much food drains
+        user_count = conn.execute("SELECT COUNT(user_id) as c FROM users").fetchone()['c']
+        town['user_count'] = user_count if user_count > 0 else 1
+        return town
     except: return None
     finally: conn.close()
 
@@ -579,8 +585,8 @@ def run_town_daily_upkeep():
         try: c.execute("ALTER TABLE town ADD COLUMN last_upkeep DATETIME")
         except: pass
         
-        town = c.execute("SELECT level, food, last_upkeep, famine FROM town WHERE id=1").fetchone()
-        if not town: return False, False, 0
+        town = c.execute("SELECT level, food, last_upkeep, famine, tax_rate FROM town WHERE id=1").fetchone()
+        if not town: return False, False, 0, 0.0
         
         now = datetime.datetime.now()
         if town['last_upkeep']:
@@ -588,39 +594,72 @@ def run_town_daily_upkeep():
             except ValueError: last_upkeep = datetime.datetime.strptime(town['last_upkeep'], "%Y-%m-%d %H:%M:%S")
             
             if now < last_upkeep + datetime.timedelta(hours=24):
-                return False, False, 0
+                return False, False, 0, 0.0
                 
-        level = town['level'] or 1
+        # 1. Food Consumption (2 per user)
+        user_count = c.execute("SELECT COUNT(user_id) as c FROM users").fetchone()['c']
+        if user_count == 0: user_count = 1
+        drain = user_count * 2 
+        
         food = town['food'] or 0
-        
-        drain = level * 15 
         new_food = food - drain
-        
         famine = 1 if new_food < 0 else 0
         new_food = max(0, new_food)
         
-        c.execute("UPDATE town SET food = ?, famine = ?, last_upkeep = ? WHERE id=1", (new_food, famine, now))
+        # 2. Daily Wealth Tax
+        tax_rate = town['tax_rate'] if town['tax_rate'] is not None else 0.05
+        wealth_tax_rate = tax_rate * 0.1 # 10% of the income tax rate
+        
+        total_bal_row = c.execute("SELECT SUM(balance) as total FROM users WHERE balance > 0").fetchone()
+        total_bal = total_bal_row['total'] if total_bal_row and total_bal_row['total'] else 0.0
+        tax_collected = total_bal * wealth_tax_rate
+        
+        # Apply wealth tax to all positive balances
+        if wealth_tax_rate > 0:
+            c.execute("UPDATE users SET balance = balance - (balance * ?) WHERE balance > 0", (wealth_tax_rate,))
+        
+        # Update Town
+        c.execute("UPDATE town SET food = ?, famine = ?, last_upkeep = ?, treasury = COALESCE(treasury, 0.0) + ? WHERE id=1", 
+                  (new_food, famine, now, tax_collected))
         conn.commit()
-        return True, famine == 1, drain
+        
+        # NOW correctly returns 4 values!
+        return True, famine == 1, drain, tax_collected
     finally: conn.close()
 
 def force_town_upkeep():
+    """Forces the town to eat immediately (for Admin testing)"""
     conn = get_connection()
     try:
         c = conn.cursor()
         try: c.execute("ALTER TABLE town ADD COLUMN last_upkeep DATETIME")
         except: pass
-        town = c.execute("SELECT level, food FROM town WHERE id=1").fetchone()
-        if not town: return
-        level = town['level'] or 1
+        town = c.execute("SELECT level, food, tax_rate FROM town WHERE id=1").fetchone()
+        if not town: return 0.0
+        
+        user_count = c.execute("SELECT COUNT(user_id) as c FROM users").fetchone()['c']
+        if user_count == 0: user_count = 1
+        drain = user_count * 2
+        
         food = town['food'] or 0
-        drain = level * 15
         new_food = food - drain
         famine = 1 if new_food < 0 else 0
         new_food = max(0, new_food)
         
-        c.execute("UPDATE town SET food = ?, famine = ?, last_upkeep = ? WHERE id=1", (new_food, famine, datetime.datetime.now()))
+        tax_rate = town['tax_rate'] if town['tax_rate'] is not None else 0.05
+        wealth_tax_rate = tax_rate * 0.1
+        
+        total_bal_row = c.execute("SELECT SUM(balance) as total FROM users WHERE balance > 0").fetchone()
+        total_bal = total_bal_row['total'] if total_bal_row and total_bal_row['total'] else 0.0
+        tax_collected = total_bal * wealth_tax_rate
+        
+        if wealth_tax_rate > 0:
+            c.execute("UPDATE users SET balance = balance - (balance * ?) WHERE balance > 0", (wealth_tax_rate,))
+        
+        c.execute("UPDATE town SET food = ?, famine = ?, last_upkeep = ?, treasury = COALESCE(treasury, 0.0) + ? WHERE id=1", 
+                  (new_food, famine, datetime.datetime.now(), tax_collected))
         conn.commit()
+        return tax_collected
     finally: conn.close()
 
 def set_town_board(channel_id, message_id):
