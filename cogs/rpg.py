@@ -889,11 +889,14 @@ class RPGSession(discord.ui.View):
             
             self.state = "ESCAPED"
             split = self.gold_earned / len(self.party)
-            self.log = f"The party escaped! Everyone gets ${split:,.2f}!"
+            self.log = f"The party escaped!"
             
             if self.gold_earned > 0:
                 for uid in self.party.keys():
-                    db.update_balance(uid, split)
+                    net, tax = db.process_town_payout(uid, split)
+                self.log += f" Everyone gets ${net:,.2f} after Town Taxes!"
+            else:
+                self.log += " The party leaves empty-handed."
                     
             await self.update_message(interaction)
 

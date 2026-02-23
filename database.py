@@ -297,9 +297,11 @@ def process_daily(user_id):
                 ts = int(next_daily.timestamp())
                 return False, f"Daily already claimed! Try again <t:{ts}:R>."
         
-        c.execute("UPDATE users SET balance = balance + 500, last_daily = ? WHERE user_id = ?", (datetime.datetime.now(), user_id))
+        c.execute("UPDATE users SET last_daily = ? WHERE user_id = ?", (datetime.datetime.now(), user_id))
         conn.commit()
-        return True, "Daily $500 claimed! Come back in 24 hours."
+        
+        net, tax = process_town_payout(user_id, 500.0)
+        return True, f"Daily claimed! You received **${net:,.2f}** *(Town Tax: ${tax:,.2f})*."
     finally: conn.close()
 
 # --- LOTTERY ---
@@ -331,11 +333,13 @@ def draw_lottery_winner():
         winner_id = winner_row['user_id']
         count = len(tickets)
         pot = (count * 50) + 500
+        
         c = conn.cursor()
-        c.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (pot, winner_id))
         c.execute("DELETE FROM lottery_tickets")
         conn.commit()
-        return winner_id, pot
+        
+        net, tax = process_town_payout(winner_id, pot)
+        return winner_id, net
     finally: conn.close()
 
 # --- INVENTORY & P2P MARKET ---
@@ -354,9 +358,10 @@ def scrap_item(user_id, item_id, scrap_value):
         if not item: return False, "Item not found or currently listed on market."
         
         c.execute("DELETE FROM inventory WHERE item_id = ?", (item_id,))
-        c.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (scrap_value, user_id))
         conn.commit()
-        return True, f"Scrapped **{item['item_name']}** for ${scrap_value:,.2f}!"
+        
+        net, tax = process_town_payout(user_id, scrap_value)
+        return True, f"Scrapped **{item['item_name']}** for **${net:,.2f}** *(Tax: ${tax:,.2f})*!"
     finally: conn.close()
 
 def get_inventory(user_id):
@@ -409,6 +414,35 @@ def buy_market_item(buyer_id, item_id):
     finally: conn.close()
 
 # --- JOBS & TOWN INCOME SYSTEM ---
+def process_town_payout(user_id, amount):
+    """MASTER FUNCTION: Applies town multipliers, famines, and taxes to new currency generation."""
+    if amount <= 0: return 0.0, 0.0
+    
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        town = c.execute("SELECT level, tax_rate, famine FROM town WHERE id=1").fetchone()
+        
+        level = town['level'] if town and town['level'] else 1
+        tax_rate = town['tax_rate'] if town and town['tax_rate'] is not None else 0.05
+        famine = town['famine'] if town and town['famine'] else 0
+        
+        multiplier = 1.0 + (level * 0.05)
+        if famine == 1:
+            multiplier *= 0.5 
+            
+        gross_pay = amount * multiplier
+        tax_amount = round(gross_pay * tax_rate, 2)
+        net_pay = round(gross_pay - tax_amount, 2)
+        
+        c.execute("UPDATE users SET balance = COALESCE(balance, 0.0) + ? WHERE user_id = ?", (net_pay, user_id))
+        c.execute("INSERT OR IGNORE INTO town (id) VALUES (1)")
+        c.execute("UPDATE town SET treasury = COALESCE(treasury, 0.0) + ? WHERE id = 1", (tax_amount,))
+        conn.commit()
+        return net_pay, tax_amount
+    finally: conn.close()
+
 def get_job_profile(user_id):
     conn = get_connection()
     try:
@@ -425,33 +459,11 @@ def set_job(user_id, job_name):
     finally: conn.close()
 
 def process_work(user_id, base_payout):
+    # Route work payout through the new master function
+    net_pay, tax_amount = process_town_payout(user_id, base_payout)
     conn = get_connection()
     try:
-        c = conn.cursor()
-        c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-        town = c.execute("SELECT level, tax_rate, famine FROM town WHERE id=1").fetchone()
-        
-        # Safety fallbacks in case the table had empty rows
-        if town:
-            level = town['level'] if town['level'] else 1
-            tax_rate = town['tax_rate'] if town['tax_rate'] is not None else 0.05
-            famine = town['famine'] if town['famine'] else 0
-        else:
-            level, tax_rate, famine = 1, 0.05, 0
-        
-        multiplier = 1.0 + (level * 0.05)
-        if famine == 1:
-            multiplier *= 0.5 
-            
-        gross_pay = base_payout * multiplier
-        tax_amount = round(gross_pay * tax_rate, 2)
-        net_pay = round(gross_pay - tax_amount, 2)
-        
-        # COALESCE prevents the SQLite "NULL Math" bug!
-        c.execute("UPDATE users SET balance = COALESCE(balance, 0.0) + ?, last_work = ? WHERE user_id = ?", (net_pay, datetime.datetime.now(), user_id))
-        
-        c.execute("INSERT OR IGNORE INTO town (id) VALUES (1)")
-        c.execute("UPDATE town SET treasury = COALESCE(treasury, 0.0) + ? WHERE id = 1", (tax_amount,))
+        conn.execute("UPDATE users SET last_work = ? WHERE user_id = ?", (datetime.datetime.now(), user_id))
         conn.commit()
         return net_pay, tax_amount
     finally: conn.close()
@@ -462,10 +474,11 @@ def process_chat_income(user_id, amount, daily_cap=500.0):
         c = conn.cursor()
         c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
         user = c.execute("SELECT daily_chat_earnings, last_chat_reset FROM users WHERE user_id = ?", (user_id,)).fetchone()
-        town = c.execute("SELECT level, famine FROM town WHERE id=1").fetchone()
+        town = c.execute("SELECT level, famine, tax_rate FROM town WHERE id=1").fetchone()
         
         level = town['level'] if town and town['level'] else 1
         famine = town['famine'] if town and town['famine'] else 0
+        tax_rate = town['tax_rate'] if town and town['tax_rate'] is not None else 0.05
         
         multiplier = 1.0 + (level * 0.05)
         if famine == 1: multiplier *= 0.5 
@@ -486,8 +499,12 @@ def process_chat_income(user_id, amount, daily_cap=500.0):
             
         actual_amount = min(adjusted_amount, daily_cap - earnings)
         
+        tax_amount = round(actual_amount * tax_rate, 2)
+        net_amount = round(actual_amount - tax_amount, 2)
+        
         c.execute("UPDATE users SET balance = COALESCE(balance, 0.0) + ?, daily_chat_earnings = ?, last_chat_reset = ? WHERE user_id = ?", 
-                  (actual_amount, earnings + actual_amount, now, user_id))
+                  (net_amount, earnings + actual_amount, now, user_id))
+        c.execute("UPDATE town SET treasury = COALESCE(treasury, 0.0) + ? WHERE id = 1", (tax_amount,))
         conn.commit()
         return True
     finally: conn.close()
@@ -502,8 +519,14 @@ def get_town_state():
 def add_town_resources(food=0, materials=0):
     conn = get_connection()
     try:
-        conn.execute("INSERT OR IGNORE INTO town (id) VALUES (1)")
-        conn.execute("UPDATE town SET food = COALESCE(food, 0) + ?, materials = COALESCE(materials, 0) + ? WHERE id=1", (food, materials))
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO town (id) VALUES (1)")
+        c.execute("UPDATE town SET food = COALESCE(food, 0) + ?, materials = COALESCE(materials, 0) + ? WHERE id=1", (food, materials))
+        
+        town = c.execute("SELECT food, famine FROM town WHERE id=1").fetchone()
+        if town and town['famine'] == 1 and town['food'] > 0:
+            c.execute("UPDATE town SET famine = 0 WHERE id=1")
+            
         conn.commit()
     finally: conn.close()
 
@@ -553,21 +576,51 @@ def run_town_daily_upkeep():
     conn = get_connection()
     try:
         c = conn.cursor()
-        town = c.execute("SELECT level, food FROM town WHERE id=1").fetchone()
-        if not town: return False, 0
+        try: c.execute("ALTER TABLE town ADD COLUMN last_upkeep DATETIME")
+        except: pass
         
+        town = c.execute("SELECT level, food, last_upkeep, famine FROM town WHERE id=1").fetchone()
+        if not town: return False, False, 0
+        
+        now = datetime.datetime.now()
+        if town['last_upkeep']:
+            try: last_upkeep = datetime.datetime.strptime(town['last_upkeep'], "%Y-%m-%d %H:%M:%S.%f")
+            except ValueError: last_upkeep = datetime.datetime.strptime(town['last_upkeep'], "%Y-%m-%d %H:%M:%S")
+            
+            if now < last_upkeep + datetime.timedelta(hours=24):
+                return False, False, 0
+                
         level = town['level'] or 1
         food = town['food'] or 0
         
-        drain = level * 15
+        drain = level * 15 
         new_food = food - drain
         
         famine = 1 if new_food < 0 else 0
         new_food = max(0, new_food)
         
-        c.execute("UPDATE town SET food = ?, famine = ? WHERE id=1", (new_food, famine))
+        c.execute("UPDATE town SET food = ?, famine = ?, last_upkeep = ? WHERE id=1", (new_food, famine, now))
         conn.commit()
-        return famine, drain
+        return True, famine == 1, drain
+    finally: conn.close()
+
+def force_town_upkeep():
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        try: c.execute("ALTER TABLE town ADD COLUMN last_upkeep DATETIME")
+        except: pass
+        town = c.execute("SELECT level, food FROM town WHERE id=1").fetchone()
+        if not town: return
+        level = town['level'] or 1
+        food = town['food'] or 0
+        drain = level * 15
+        new_food = food - drain
+        famine = 1 if new_food < 0 else 0
+        new_food = max(0, new_food)
+        
+        c.execute("UPDATE town SET food = ?, famine = ?, last_upkeep = ? WHERE id=1", (new_food, famine, datetime.datetime.now()))
+        conn.commit()
     finally: conn.close()
 
 def set_town_board(channel_id, message_id):
@@ -594,13 +647,6 @@ def set_rpg_class(user_id, class_name):
     conn = get_connection()
     try:
         conn.execute("UPDATE users SET rpg_class = ? WHERE user_id = ?", (class_name, user_id))
-        conn.commit()
-    finally: conn.close()
-
-def set_town_board(channel_id, message_id):
-    conn = get_connection()
-    try:
-        conn.execute("UPDATE town SET board_channel_id=?, board_message_id=? WHERE id=1", (channel_id, message_id))
         conn.commit()
     finally: conn.close()
 

@@ -122,12 +122,13 @@ async def force_board_update(bot):
     """Instantly updates the live town board message."""
     t = db.get_town_state()
     if not t or not t.get('board_channel_id') or not t.get('board_message_id'): return
-    channel = bot.get_channel(t['board_channel_id'])
-    if channel:
-        try:
+    try:
+        channel = bot.get_channel(t['board_channel_id']) or await bot.fetch_channel(t['board_channel_id'])
+        if channel:
             msg = await channel.fetch_message(t['board_message_id'])
             await msg.edit(embed=build_town_embed(t))
-        except: pass
+    except Exception as e:
+        print(f"[Town Board] Could not update board: {e}")
 
 # ==========================================
 #             MINI-GAMES
@@ -144,7 +145,7 @@ class FarmerGame(discord.ui.View):
         self.clear_items()
         
         food_yield = random.randint(15, 30)
-        db.add_town_resources(food=food_yield)
+        db.add_town_resources(food=food_yield) # This now instantly lifts the famine!
         net, tax = db.process_work(self.user.id, self.base_pay)
         
         embed = discord.Embed(
@@ -153,7 +154,7 @@ class FarmerGame(discord.ui.View):
             color=0x2ecc71
         )
         await interaction.response.edit_message(embed=embed, view=self)
-        await force_board_update(interaction.client) # Instant Update
+        await force_board_update(interaction.client) 
         self.stop()
 
 class MinerGame(discord.ui.View):
@@ -218,7 +219,7 @@ class MinerGame(discord.ui.View):
         embed = self.get_embed("left")
         embed.description += f"\n\n**Paycheck:** ${net:,.2f} *(Tax: ${tax:,.2f})*"
         await interaction.response.edit_message(embed=embed, view=self)
-        await force_board_update(interaction.client) # Instant Update
+        await force_board_update(interaction.client) 
         self.stop()
 
 class HackerGame(discord.ui.View):
@@ -262,7 +263,7 @@ class HackerGame(discord.ui.View):
                 embed = discord.Embed(title="🚨 Access Denied", description="Incorrect key. You were locked out and traced!", color=0xe74c3c)
                 
             await interaction.response.edit_message(embed=embed, view=self)
-            await force_board_update(interaction.client) # Instant Update
+            await force_board_update(interaction.client) 
             self.stop()
         return cb
         
@@ -281,35 +282,31 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
         self.bot = bot
         if not self.town_upkeep_task.is_running():
             self.town_upkeep_task.start()
-        if not self.live_board_task.is_running():
-            self.live_board_task.start()
 
     def cog_unload(self):
         self.town_upkeep_task.cancel()
-        self.live_board_task.cancel()
 
-    # --- LIVE TOWN BOARD TASK (Failsafe) ---
-    @tasks.loop(minutes=5)
-    async def live_board_task(self):
-        await self.bot.wait_until_ready()
-        await force_board_update(self.bot)
-
-    # --- THE 24 HOUR FAMINE THREAT ---
-    @tasks.loop(hours=24)
+    # --- RELIABLE BACKGROUND TASK (Checks every 10 minutes) ---
+    @tasks.loop(minutes=10)
     async def town_upkeep_task(self):
         await self.bot.wait_until_ready()
-        famine, drain = db.run_town_daily_upkeep()
-        
-        # ⚠️ IMPORTANT: REPLACE THIS NUMBER WITH YOUR ANNOUNCEMENT CHANNEL ID!
-        channel = self.bot.get_channel(123456789012345678) 
-        if channel:
-            if famine:
-                embed = discord.Embed(title="🚨 TOWN FAMINE 🚨", description=f"The town ran out of food! The citizens are starving.\n\n**All incomes and paychecks across the server are cut by 50% until Farmers restore the food supply!**", color=0xe74c3c)
-                await channel.send(embed=embed)
-            else:
-                embed = discord.Embed(title="🍲 Daily Town Upkeep", description=f"The town consumed **{drain} Food** today to stay healthy.", color=0x3498db)
-                await channel.send(embed=embed)
-        await force_board_update(self.bot)
+        try:
+            # The database now strictly manages the 24-hour limit
+            ran_upkeep, is_famine, drain = db.run_town_daily_upkeep()
+            
+            if ran_upkeep:
+                # ⚠️ IMPORTANT: REPLACE THIS NUMBER WITH YOUR ANNOUNCEMENT CHANNEL ID!
+                channel = self.bot.get_channel(123456789012345678) 
+                if channel:
+                    if is_famine:
+                        embed = discord.Embed(title="🚨 TOWN FAMINE 🚨", description=f"The town ran out of food! The citizens are starving.\n\n**All incomes and paychecks across the server are cut by 50% until Farmers restore the food supply!**", color=0xe74c3c)
+                        await channel.send(embed=embed)
+                    else:
+                        embed = discord.Embed(title="🍲 Daily Town Upkeep", description=f"The town consumed **{drain} Food** today to stay healthy.", color=0x3498db)
+                        await channel.send(embed=embed)
+                await force_board_update(self.bot)
+        except Exception as e:
+            print(f"Town Upkeep Error: {e}")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -328,6 +325,13 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
         msg = await interaction.channel.send(embed=embed)
         db.set_town_board(interaction.channel.id, msg.id)
         await interaction.followup.send("✅ Board setup complete! It will update automatically.", ephemeral=True)
+        
+    @app_commands.command(name="admin_force_upkeep", description="Admin: Force a day to pass to test Famine logic.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def admin_force_upkeep(self, interaction: discord.Interaction):
+        db.force_town_upkeep()
+        await force_board_update(self.bot)
+        await interaction.response.send_message("✅ Time accelerated. The town just ate its daily food. Check the board!", ephemeral=True)
 
     @app_commands.command(name="town", description="View the current status of the server's Town!")
     async def view_town(self, interaction: discord.Interaction):
@@ -388,7 +392,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
             net, tax = db.process_work(interaction.user.id, job_data['payout'])
             embed = discord.Embed(title="💼 Shift Complete", description=f"You worked hard as a {current_job} {job_data['emoji']}.\n\n**Paycheck:** ${net:,.2f}\n*(Taxes paid to town: ${tax:,.2f})*", color=0x2ecc71)
             await interaction.response.send_message(embed=embed)
-            await force_board_update(self.bot) # Instant Update
+            await force_board_update(self.bot) 
 
     # --- JOB PERKS ---
 
@@ -409,7 +413,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
                 color=0xf1c40f
             )
             await interaction.response.send_message(embed=embed)
-            await force_board_update(self.bot) # Instant Update
+            await force_board_update(self.bot) 
         else:
             await interaction.response.send_message(f"❌ The town doesn't have enough resources to upgrade to Level {t['level']+1}. You need **{mat_cost} Materials** and **${gold_cost:,.2f} in the Treasury**.", ephemeral=True)
 
@@ -425,7 +429,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
         rate = percentage / 100.0
         db.set_tax_rate(rate)
         await interaction.response.send_message(f"🏛️ **New Legislation Passed:** {interaction.user.mention} has set the town tax rate to **{percentage}%**.")
-        await force_board_update(self.bot) # Instant Update
+        await force_board_update(self.bot) 
 
     @app_commands.command(name="embezzle", description="[Politician] Risk everything to steal from the town treasury.")
     @app_commands.checks.cooldown(1, 86400, key=lambda i: i.user.id) # 24 Hour Cooldown
@@ -447,7 +451,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
         if random.random() < 0.50:
             db.embezzle_town_funds(interaction.user.id, amount)
             await interaction.response.send_message(f"🤫 **Success.** You quietly slipped **${amount:,.2f}** from the treasury into your personal account.")
-            await force_board_update(self.bot) # Instant Update
+            await force_board_update(self.bot) 
         else:
             db.set_job(interaction.user.id, "Unemployed")
             user_bal = db.get_balance(interaction.user.id)
