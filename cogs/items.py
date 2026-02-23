@@ -6,8 +6,8 @@ import random
 import os
 
 TIER_WEIGHTS = {
-    "Common": 500, "Uncommon": 300, "Rare": 150, 
-    "Epic": 40, "Legendary": 9, "Mythic": 1
+    "Common": 50, "Uncommon": 25, "Rare": 15, 
+    "Epic": 9, "Legendary": 5, "Mythic": 1
 }
 
 TIER_COLORS = {
@@ -42,15 +42,7 @@ def get_item_filepath(item_data):
     return None
 
 
-@app_commands.command(name="delist", description="Remove one of your items from the P2P market.")
-@app_commands.describe(item_id="The ID of the item you want to remove from the market")
-async def delist_item(self, interaction: discord.Interaction, item_id: int):
-    success, msg = db.delist_market_item(interaction.user.id, item_id)
-    
-    if success:
-        await interaction.response.send_message(f"✅ {msg}", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+
 # --- UI COMPONENTS FOR THE MARKET ---
 
 class SellItemModal(discord.ui.Modal, title="Sell an Item"):
@@ -273,7 +265,15 @@ class Items(commands.Cog):
         embed.add_field(name="Progress", value=f"`{bar}` {percentage:.1f}%")
         
         await interaction.response.send_message(embed=embed)
-
+    @app_commands.command(name="delist", description="Remove one of your items from the P2P market.")
+    @app_commands.describe(item_id="The ID of the item you want to remove from the market")
+    async def delist_item(self, interaction: discord.Interaction, item_id: int):
+        success, msg = db.delist_market_item(interaction.user.id, item_id)
+        
+        if success:
+            await interaction.response.send_message(f"✅ {msg}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
     @app_commands.command(name="inventory", description="View your items.")
     async def inventory(self, interaction: discord.Interaction):
         items = db.get_inventory(interaction.user.id)
