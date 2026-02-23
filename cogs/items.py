@@ -41,6 +41,16 @@ def get_item_filepath(item_data):
         pass
     return None
 
+
+@app_commands.command(name="delist", description="Remove one of your items from the P2P market.")
+@app_commands.describe(item_id="The ID of the item you want to remove from the market")
+async def delist_item(self, interaction: discord.Interaction, item_id: int):
+    success, msg = db.delist_market_item(interaction.user.id, item_id)
+    
+    if success:
+        await interaction.response.send_message(f"✅ {msg}", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 # --- UI COMPONENTS FOR THE MARKET ---
 
 class SellItemModal(discord.ui.Modal, title="Sell an Item"):

@@ -102,7 +102,9 @@ def generate_town_map(level, famine):
 def build_town_embed(t):
     status_str = "🔴 **FAMINE** (-50% Global Income)" if t['famine'] else "🟢 **Prospering**"
     tax_pct = int(t['tax_rate'] * 100)
+    wealth_tax_pct = t['tax_rate'] * 10 # 10% of the income tax rate
     boost_pct = int((t['level'] * 0.05) * 100)
+    drain_amt = t.get('user_count', 1) * 2
     
     map_str = generate_town_map(t['level'], t['famine'])
     
@@ -111,8 +113,8 @@ def build_town_embed(t):
         description=f"**Status:** {status_str}\n*(+{boost_pct}% to all paychecks)*\n\n{map_str}", 
         color=0x3498db if not t['famine'] else 0xe74c3c
     )
-    embed.add_field(name="💰 Treasury", value=f"**${t['treasury']:,.2f}**\n*(Tax Rate: {tax_pct}%)*", inline=True)
-    embed.add_field(name="🍲 Food", value=f"**{t['food']}** *(Drains {t['level']*15}/day)*", inline=True)
+    embed.add_field(name="💰 Treasury", value=f"**${t['treasury']:,.2f}**\n*(Income Tax: {tax_pct}% | Daily Wealth Tax: {wealth_tax_pct:.1f}%)*", inline=True)
+    embed.add_field(name="🍲 Food", value=f"**{t['food']}** *(Drains {drain_amt}/day)*", inline=True)
     embed.add_field(name="🧱 Materials", value=f"**{t['materials']}**", inline=True)
     embed.set_footer(text="The map updates automatically in real-time.")
     return embed
@@ -145,7 +147,7 @@ class FarmerGame(discord.ui.View):
         self.clear_items()
         
         food_yield = random.randint(15, 30)
-        db.add_town_resources(food=food_yield) # This now instantly lifts the famine!
+        db.add_town_resources(food=food_yield)
         net, tax = db.process_work(self.user.id, self.base_pay)
         
         embed = discord.Embed(
@@ -291,8 +293,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
     async def town_upkeep_task(self):
         await self.bot.wait_until_ready()
         try:
-            # The database now strictly manages the 24-hour limit
-            ran_upkeep, is_famine, drain = db.run_town_daily_upkeep()
+            ran_upkeep, is_famine, drain, tax_collected = db.run_town_daily_upkeep()
             
             if ran_upkeep:
                 # ⚠️ IMPORTANT: REPLACE THIS NUMBER WITH YOUR ANNOUNCEMENT CHANNEL ID!
@@ -300,9 +301,11 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
                 if channel:
                     if is_famine:
                         embed = discord.Embed(title="🚨 TOWN FAMINE 🚨", description=f"The town ran out of food! The citizens are starving.\n\n**All incomes and paychecks across the server are cut by 50% until Farmers restore the food supply!**", color=0xe74c3c)
+                        embed.add_field(name="📉 Daily Wealth Tax", value=f"**${tax_collected:,.2f}** was taxed from citizen bank accounts.")
                         await channel.send(embed=embed)
                     else:
                         embed = discord.Embed(title="🍲 Daily Town Upkeep", description=f"The town consumed **{drain} Food** today to stay healthy.", color=0x3498db)
+                        embed.add_field(name="📈 Daily Wealth Tax", value=f"**${tax_collected:,.2f}** was taxed from citizen bank accounts and added to the Treasury.")
                         await channel.send(embed=embed)
                 await force_board_update(self.bot)
         except Exception as e:
@@ -329,9 +332,9 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
     @app_commands.command(name="admin_force_upkeep", description="Admin: Force a day to pass to test Famine logic.")
     @app_commands.checks.has_permissions(administrator=True)
     async def admin_force_upkeep(self, interaction: discord.Interaction):
-        db.force_town_upkeep()
+        tax_collected = db.force_town_upkeep()
         await force_board_update(self.bot)
-        await interaction.response.send_message("✅ Time accelerated. The town just ate its daily food. Check the board!", ephemeral=True)
+        await interaction.response.send_message(f"✅ Time accelerated. The town just ate its daily food and collected **${tax_collected:,.2f}** in wealth tax. Check the board!", ephemeral=True)
 
     @app_commands.command(name="town", description="View the current status of the server's Town!")
     async def view_town(self, interaction: discord.Interaction):
