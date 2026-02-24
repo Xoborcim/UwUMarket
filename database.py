@@ -85,6 +85,18 @@ def initialize_db():
         
         c.execute("UPDATE users SET balance = ROUND(balance, 2)")
         conn.commit()
+
+    # 5. RPG ANALYTICS TABLE (Add this inside initialize_db)
+        c.execute('''CREATE TABLE IF NOT EXISTS rpg_analytics (
+            run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            floor_reached INTEGER,
+            outcome TEXT,
+            gold_earned REAL,
+            party_size INTEGER,
+            party_classes TEXT,
+            killer_enemy TEXT
+        )''')
     finally:
         conn.close()
 
