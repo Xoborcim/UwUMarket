@@ -717,3 +717,43 @@ def buy_starter_weapon(user_id, weapon_name, cost):
         conn.commit()
         return True, f"Successfully purchased and equipped the {weapon_name}!"
     finally: conn.close()
+
+
+
+# --- RPG ANALYTICS ---
+def log_rpg_run(floor, outcome, gold, party_data, killer=None):
+    conn = get_connection()
+    try:
+        # Create a string like "Paladin, Mage, Cleric"
+        classes = ", ".join([p['class'] for p in party_data])
+        conn.execute("""
+            INSERT INTO rpg_analytics 
+            (floor_reached, outcome, gold_earned, party_size, party_classes, killer_enemy) 
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (floor, outcome, gold, len(party_data), classes, killer)
+        )
+        conn.commit()
+    finally: conn.close()
+
+def get_rpg_analytics():
+    conn = get_connection()
+    try:
+        total_runs = conn.execute("SELECT COUNT(*) as c FROM rpg_analytics").fetchone()['c']
+        if total_runs == 0: return None
+        
+        avg_floor = conn.execute("SELECT AVG(floor_reached) as a FROM rpg_analytics").fetchone()['a']
+        max_floor = conn.execute("SELECT MAX(floor_reached) as m FROM rpg_analytics").fetchone()['m']
+        total_gold = conn.execute("SELECT SUM(gold_earned) as s FROM rpg_analytics").fetchone()['s']
+        
+        # Most common killer (Boss/Enemy that ends runs)
+        killer = conn.execute("SELECT killer_enemy, COUNT(killer_enemy) as c FROM rpg_analytics WHERE killer_enemy IS NOT NULL GROUP BY killer_enemy ORDER BY c DESC LIMIT 1").fetchone()
+        deadliest = f"{killer['killer_enemy']} ({killer['c']} kills)" if killer else "None"
+        
+        return {
+            "total_runs": total_runs,
+            "avg_floor": round(avg_floor, 1),
+            "max_floor": max_floor,
+            "total_gold": total_gold,
+            "deadliest": deadliest
+        }
+    finally: conn.close()
