@@ -18,9 +18,12 @@ CLASSES = {
     "Cryomancer": {"hp": 65, "atk_mod": -3, "def_mod": 1, "spell_mod": 2, "emoji": "❄️", "passive": "dodge", "spell": "frostbite"}
 }
 
-# --- SHOP GEAR ---
+# --- NEW: SHOP GEAR (Weapons, Armor, Wands) ---
 SHOP_GEAR = {
+    # --- Starter ---
     "Rusty Dagger": {"cost": 0, "atk": 20, "def": 0, "int": 0, "emoji": "🗡️"},
+    
+    # --- Weapons (Focus on Attack) ---
     "Wooden Club": {"cost": 500, "atk": 22, "def": 0, "int": 0, "emoji": "🏏"},
     "Iron Longsword": {"cost": 2500, "atk": 25, "def": 0, "int": 0, "emoji": "⚔️"},
     "Steel Halberd": {"cost": 10000, "atk": 30, "def": 0, "int": 0, "emoji": "🪓"},
@@ -29,14 +32,20 @@ SHOP_GEAR = {
     "Dragonbone Greatsword": {"cost": 100000, "atk": 55, "def": 0, "int": 0, "emoji": "🔥"},
     "Void Reaper": {"cost": 250000, "atk": 85, "def": 0, "int": 0, "emoji": "🌌"},
     "Celestial Spear": {"cost": 1000000, "atk": 120, "def": 0, "int": 0, "emoji": "☄️"},
+    
+    # --- Armor (Focus on Defense) ---
     "Leather Tunic": {"cost": 1500, "atk": 0, "def": 8, "int": 0, "emoji": "🦺"},
     "Chainmail": {"cost": 8000, "atk": 0, "def": 18, "int": 0, "emoji": "⛓️"},
     "Plate Armor": {"cost": 30000, "atk": 0, "def": 30, "int": 0, "emoji": "🛡️"},
     "Aegis of the Gods": {"cost": 500000, "atk": 0, "def": 75, "int": 0, "emoji": "🌟"},
+    
+    # --- Wands & Magic (Focus on Intelligence) ---
     "Apprentice Wand": {"cost": 2000, "atk": 0, "def": 0, "int": 4, "emoji": "🪄"},
     "Ruby Staff": {"cost": 15000, "atk": 0, "def": 0, "int": 8, "emoji": "🦯"},
     "Archmage Grimoire": {"cost": 80000, "atk": 0, "def": 0, "int": 16, "emoji": "📖"},
     "Staff of the Cosmos": {"cost": 800000, "atk": 0, "def": 0, "int": 35, "emoji": "🌌"},
+    
+    # --- Endgame Artifacts ---
     "Jad's Ascended Horseshoe": {"cost": 5000000, "atk": 250, "def": 100, "int": 50, "emoji": "🐴"}
 }
 
@@ -58,7 +67,8 @@ BOSSES = [
     {"name": "Lich King", "hp": 120, "atk": 15, "def": -5, "emoji": "🧙‍♂️", "effect": "freeze", "chance": 0.25, "weakness": "hellfire"},
     {"name": "Jad", "hp": 500, "atk": 8, "def": -10, "emoji": "🐴", "effect": "freeze", "chance": 0.25},
     {"name": "Colossal Minotaur", "hp": 220, "atk": 18, "def": 5, "emoji": "🐂"},
-    {"name": "Archdemon", "hp": 180, "atk": 22, "def": 8, "emoji": "👿", "effect": "burn", "chance": 0.35, "weakness": "frostbite"}
+    # --- NERFED ARCHDEMON ---
+    {"name": "Archdemon", "hp": 140, "atk": 16, "def": 5, "emoji": "👿", "effect": "burn", "chance": 0.25, "weakness": "frostbite"}
 ]
 
 ITEMS = [
@@ -187,6 +197,31 @@ class RPGInventoryDropdown(discord.ui.Select):
                 
             if t_type != 'spell':
                 self.session.log += f"\n🎒 {interaction.user.display_name} used the {item['name']}!"
+
+            # --- JAD SET ASCENSION EVENT ---
+            if "Jad" in item['name'] and t_type == 'stat':
+                p['jad_pieces'].add(item['name'])
+                
+                # Check if they have at least 2 unique Jad stat items equipped
+                stat_pieces = [x for x in p['jad_pieces'] if x in ["Jad's Ascended Horseshoe", "Jad's Almighty Hoof", "Jad's Saddle of Invincibility"]]
+                
+                if len(stat_pieces) >= 2 and not p['is_jad']:
+                    p['is_jad'] = True
+                    p['class'] = "Jad's Avatar"
+                    p['emoji'] = "🐎"
+                    
+                    p['max_hp'] += 1000
+                    p['hp'] = p['max_hp']
+                    p['atk'] += 200
+                    p['def'] += 150
+                    p['intelligence'] += 50
+                    
+                    # Unlock every single passive ability in the game
+                    for passive in ['dodge', 'thorns', 'unleashed rage', 'divine interference']:
+                        if passive not in p['passives']:
+                            p['passives'].append(passive)
+                            
+                    self.session.log += f"\n\n🌟 **DIVINE ASCENSION!** {interaction.user.display_name} combined the artifacts of Jad! They transformed into JAD'S AVATAR! Massive stat boost & ALL PASSIVES unlocked!"
                 
             await interaction.response.send_message(f"✅ You used the **{item['name']}**!", ephemeral=True)
             
@@ -259,6 +294,11 @@ class RPGSession(discord.ui.View):
             cls = CLASSES.get(class_name, CLASSES["Fighter"])
             passives = [cls['passive']] if cls['passive'] else []
             
+            # Setup Ascension tracking (checks if they bought the $5M item from shop)
+            jad_pieces = set()
+            if gear_name == "Jad's Ascended Horseshoe":
+                jad_pieces.add("Jad's Ascended Horseshoe")
+            
             self.party[user.id] = {
                 "user": user, "class": class_name, "emoji": cls['emoji'],
                 "max_hp": cls['hp'], "hp": cls['hp'],
@@ -273,7 +313,9 @@ class RPGSession(discord.ui.View):
                 "level": 1,         
                 "xp": 0,
                 "max_xp": 50,
-                "pending_level": 0
+                "pending_level": 0,
+                "jad_pieces": jad_pieces,
+                "is_jad": False
             }
             
         self.gold_earned = 0
@@ -462,7 +504,7 @@ class RPGSession(discord.ui.View):
             self.stop()
             for uid in self.party.keys(): active_runs.discard(uid)
             
-            # --- NEW: STAT TRACKING ---
+            # STAT TRACKING
             db.log_rpg_run(self.floor, self.state, self.gold_earned, list(self.party.values()), killer=self.enemy['name'] if self.state == "WIPED" and self.enemy else None)
             
         if interaction.message:
@@ -644,7 +686,6 @@ class RPGSession(discord.ui.View):
 
         if self.enemy['hp'] <= self.enemy['max_hp'] * 0.3 and not self.enemy.get('enraged') and self.enemy.get('boss'):
             self.enemy['enraged'] = True
-            # --- NERF APPLIED HERE (1.5 -> 1.1) ---
             self.enemy['atk'] = int(self.enemy['atk'] * 1.1) 
             self.log += f"⚠️ THE {self.enemy['name'].upper()} BECOMES ENRAGED! ATK INCREASED! IT ATTACKS TWICE!\n"
             
@@ -837,8 +878,12 @@ class RPGSession(discord.ui.View):
             if random.random() < 0.15 and t_type not in ['gold', 'relic']:
                 self.state = "COMBAT"
                 self.enemy = {
-                    "name": "Mimic", "emoji": "📦", "max_hp": 80 * len(self.party), "hp": 80 * len(self.party), 
-                    "atk": 15 + self.floor*2, "def": 5 + self.floor, "chance": 0, "boss": False
+                    "name": "Mimic", "emoji": "📦", 
+                    "max_hp": 50 * len(self.party), 
+                    "hp": 50 * len(self.party), 
+                    "atk": 10 + self.floor, 
+                    "def": 2 + (self.floor // 2), 
+                    "chance": 0, "boss": False
                 }
                 self.log = f"⚠️ THE CHEST WAS A MIMIC! It bites {interaction.user.display_name}!\n"
                 self.treasure = None
