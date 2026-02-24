@@ -710,14 +710,26 @@ def buy_starter_weapon(user_id, weapon_name, cost):
         
         if user['balance'] < cost:
             return False, "Insufficient funds in your global balance."
-        if user['starter_weapon'] == weapon_name:
-            return False, "You already own this weapon and have it equipped!"
+        
+        # Grab their current gear string and split it into a list
+        current_gear = user['starter_weapon'] if user['starter_weapon'] else "Rusty Dagger"
+        gear_list = [g.strip() for g in current_gear.split(",") if g.strip()]
+        
+        if weapon_name in gear_list:
+            return False, "You already own this gear! Its stats are already permanently active."
             
-        c.execute("UPDATE users SET balance = balance - ?, starter_weapon = ? WHERE user_id = ?", (cost, weapon_name, user_id))
+        # Strip out the default Rusty Dagger the moment they buy a real item
+        if "Rusty Dagger" in gear_list and weapon_name != "Rusty Dagger":
+            gear_list.remove("Rusty Dagger")
+            
+        # Add the new weapon and stitch it back into a string
+        gear_list.append(weapon_name)
+        new_gear = ",".join(gear_list)
+            
+        c.execute("UPDATE users SET balance = balance - ?, starter_weapon = ? WHERE user_id = ?", (cost, new_gear, user_id))
         conn.commit()
-        return True, f"Successfully purchased and equipped the {weapon_name}!"
+        return True, f"Successfully purchased the **{weapon_name}**! Its stats have permanently stacked to your profile."
     finally: conn.close()
-
 
 
 # --- RPG ANALYTICS ---
