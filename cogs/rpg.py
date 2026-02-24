@@ -18,12 +18,9 @@ CLASSES = {
     "Cryomancer": {"hp": 65, "atk_mod": -3, "def_mod": 1, "spell_mod": 2, "emoji": "❄️", "passive": "dodge", "spell": "frostbite"}
 }
 
-# --- NEW: SHOP GEAR (Weapons, Armor, Wands) ---
+# --- SHOP GEAR ---
 SHOP_GEAR = {
-    # --- Starter ---
     "Rusty Dagger": {"cost": 0, "atk": 20, "def": 0, "int": 0, "emoji": "🗡️"},
-    
-    # --- Weapons (Focus on Attack) ---
     "Wooden Club": {"cost": 500, "atk": 22, "def": 0, "int": 0, "emoji": "🏏"},
     "Iron Longsword": {"cost": 2500, "atk": 25, "def": 0, "int": 0, "emoji": "⚔️"},
     "Steel Halberd": {"cost": 10000, "atk": 30, "def": 0, "int": 0, "emoji": "🪓"},
@@ -32,20 +29,14 @@ SHOP_GEAR = {
     "Dragonbone Greatsword": {"cost": 100000, "atk": 55, "def": 0, "int": 0, "emoji": "🔥"},
     "Void Reaper": {"cost": 250000, "atk": 85, "def": 0, "int": 0, "emoji": "🌌"},
     "Celestial Spear": {"cost": 1000000, "atk": 120, "def": 0, "int": 0, "emoji": "☄️"},
-    
-    # --- Armor (Focus on Defense) ---
     "Leather Tunic": {"cost": 1500, "atk": 0, "def": 8, "int": 0, "emoji": "🦺"},
     "Chainmail": {"cost": 8000, "atk": 0, "def": 18, "int": 0, "emoji": "⛓️"},
     "Plate Armor": {"cost": 30000, "atk": 0, "def": 30, "int": 0, "emoji": "🛡️"},
     "Aegis of the Gods": {"cost": 500000, "atk": 0, "def": 75, "int": 0, "emoji": "🌟"},
-    
-    # --- Wands & Magic (Focus on Intelligence) ---
     "Apprentice Wand": {"cost": 2000, "atk": 0, "def": 0, "int": 4, "emoji": "🪄"},
     "Ruby Staff": {"cost": 15000, "atk": 0, "def": 0, "int": 8, "emoji": "🦯"},
     "Archmage Grimoire": {"cost": 80000, "atk": 0, "def": 0, "int": 16, "emoji": "📖"},
     "Staff of the Cosmos": {"cost": 800000, "atk": 0, "def": 0, "int": 35, "emoji": "🌌"},
-    
-    # --- Endgame Artifacts ---
     "Jad's Ascended Horseshoe": {"cost": 5000000, "atk": 250, "def": 100, "int": 50, "emoji": "🐴"}
 }
 
@@ -471,6 +462,9 @@ class RPGSession(discord.ui.View):
             self.stop()
             for uid in self.party.keys(): active_runs.discard(uid)
             
+            # --- NEW: STAT TRACKING ---
+            db.log_rpg_run(self.floor, self.state, self.gold_earned, list(self.party.values()), killer=self.enemy['name'] if self.state == "WIPED" and self.enemy else None)
+            
         if interaction.message:
             self.message = interaction.message
             
@@ -650,7 +644,8 @@ class RPGSession(discord.ui.View):
 
         if self.enemy['hp'] <= self.enemy['max_hp'] * 0.3 and not self.enemy.get('enraged') and self.enemy.get('boss'):
             self.enemy['enraged'] = True
-            self.enemy['atk'] = int(self.enemy['atk'] * 1.5)
+            # --- NERF APPLIED HERE (1.5 -> 1.1) ---
+            self.enemy['atk'] = int(self.enemy['atk'] * 1.1) 
             self.log += f"⚠️ THE {self.enemy['name'].upper()} BECOMES ENRAGED! ATK INCREASED! IT ATTACKS TWICE!\n"
             
         attacks = 2 if self.enemy.get('enraged') else 1
@@ -1038,6 +1033,22 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
             await interaction.response.send_message("🚨 **Run Aborted.** You have been forcefully removed from the active dungeon roster and can start a new game.", ephemeral=True)
         else:
             await interaction.response.send_message("❌ You are not currently locked in an active dungeon run.", ephemeral=True)
+
+    @app_commands.command(name="analytics", description="Admin: View RPG balance stats (avg floors, deadliest enemy, etc).")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def analytics(self, interaction: discord.Interaction):
+        stats = db.get_rpg_analytics()
+        if not stats:
+            return await interaction.response.send_message("📊 No runs recorded yet.", ephemeral=True)
+            
+        embed = discord.Embed(title="📊 RPG Analytics", color=0x9b59b6)
+        embed.add_field(name="Runs Completed", value=str(stats['total_runs']), inline=True)
+        embed.add_field(name="Avg Floor", value=str(stats['avg_floor']), inline=True)
+        embed.add_field(name="Highest Floor", value=str(stats['max_floor']), inline=True)
+        embed.add_field(name="Total Gold Earned", value=f"${stats['total_gold']:,.2f}", inline=True)
+        embed.add_field(name="Deadliest Enemy", value=stats['deadliest'], inline=False)
+        
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(RPG(bot))
