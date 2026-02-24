@@ -18,12 +18,9 @@ CLASSES = {
     "Cryomancer": {"hp": 65, "atk_mod": -3, "def_mod": 1, "spell_mod": 2, "emoji": "❄️", "passive": "dodge", "spell": "frostbite"}
 }
 
-# --- NEW: SHOP GEAR (Weapons, Armor, Wands) ---
+# --- SHOP GEAR ---
 SHOP_GEAR = {
-    # --- Starter ---
     "Rusty Dagger": {"cost": 0, "atk": 20, "def": 0, "int": 0, "emoji": "🗡️"},
-    
-    # --- Weapons (Focus on Attack) ---
     "Wooden Club": {"cost": 500, "atk": 22, "def": 0, "int": 0, "emoji": "🏏"},
     "Iron Longsword": {"cost": 2500, "atk": 25, "def": 0, "int": 0, "emoji": "⚔️"},
     "Steel Halberd": {"cost": 10000, "atk": 30, "def": 0, "int": 0, "emoji": "🪓"},
@@ -32,20 +29,14 @@ SHOP_GEAR = {
     "Dragonbone Greatsword": {"cost": 100000, "atk": 55, "def": 0, "int": 0, "emoji": "🔥"},
     "Void Reaper": {"cost": 250000, "atk": 85, "def": 0, "int": 0, "emoji": "🌌"},
     "Celestial Spear": {"cost": 1000000, "atk": 120, "def": 0, "int": 0, "emoji": "☄️"},
-    
-    # --- Armor (Focus on Defense) ---
     "Leather Tunic": {"cost": 1500, "atk": 0, "def": 8, "int": 0, "emoji": "🦺"},
     "Chainmail": {"cost": 8000, "atk": 0, "def": 18, "int": 0, "emoji": "⛓️"},
     "Plate Armor": {"cost": 30000, "atk": 0, "def": 30, "int": 0, "emoji": "🛡️"},
     "Aegis of the Gods": {"cost": 500000, "atk": 0, "def": 75, "int": 0, "emoji": "🌟"},
-    
-    # --- Wands & Magic (Focus on Intelligence) ---
     "Apprentice Wand": {"cost": 2000, "atk": 0, "def": 0, "int": 4, "emoji": "🪄"},
     "Ruby Staff": {"cost": 15000, "atk": 0, "def": 0, "int": 8, "emoji": "🦯"},
     "Archmage Grimoire": {"cost": 80000, "atk": 0, "def": 0, "int": 16, "emoji": "📖"},
     "Staff of the Cosmos": {"cost": 800000, "atk": 0, "def": 0, "int": 35, "emoji": "🌌"},
-    
-    # --- Endgame Artifacts ---
     "Jad's Ascended Horseshoe": {"cost": 5000000, "atk": 250, "def": 100, "int": 50, "emoji": "🐴"}
 }
 
@@ -67,7 +58,6 @@ BOSSES = [
     {"name": "Lich King", "hp": 120, "atk": 15, "def": -5, "emoji": "🧙‍♂️", "effect": "freeze", "chance": 0.25, "weakness": "hellfire"},
     {"name": "Jad", "hp": 500, "atk": 8, "def": -10, "emoji": "🐴", "effect": "freeze", "chance": 0.25},
     {"name": "Colossal Minotaur", "hp": 220, "atk": 18, "def": 5, "emoji": "🐂"},
-    # --- NERFED ARCHDEMON ---
     {"name": "Archdemon", "hp": 140, "atk": 16, "def": 5, "emoji": "👿", "effect": "burn", "chance": 0.25, "weakness": "frostbite"}
 ]
 
@@ -202,7 +192,6 @@ class RPGInventoryDropdown(discord.ui.Select):
             if "Jad" in item['name'] and t_type == 'stat':
                 p['jad_pieces'].add(item['name'])
                 
-                # Check if they have at least 2 unique Jad stat items equipped
                 stat_pieces = [x for x in p['jad_pieces'] if x in ["Jad's Ascended Horseshoe", "Jad's Almighty Hoof", "Jad's Saddle of Invincibility"]]
                 
                 if len(stat_pieces) >= 2 and not p['is_jad']:
@@ -216,7 +205,6 @@ class RPGInventoryDropdown(discord.ui.Select):
                     p['def'] += 150
                     p['intelligence'] += 50
                     
-                    # Unlock every single passive ability in the game
                     for passive in ['dodge', 'thorns', 'unleashed rage', 'divine interference']:
                         if passive not in p['passives']:
                             p['passives'].append(passive)
@@ -289,22 +277,31 @@ class RPGSession(discord.ui.View):
         self.party = {}
         
         for user in party_members:
-            gear_name, class_name = db.get_rpg_profile(user.id)
-            gear = SHOP_GEAR.get(gear_name, SHOP_GEAR["Rusty Dagger"])
+            gear_data, class_name = db.get_rpg_profile(user.id)
+            gear_names = gear_data.split(',') if gear_data else ["Rusty Dagger"]
             cls = CLASSES.get(class_name, CLASSES["Fighter"])
             passives = [cls['passive']] if cls['passive'] else []
             
-            # Setup Ascension tracking (checks if they bought the $5M item from shop)
+            total_atk_bonus = 0
+            total_def_bonus = 0
+            total_int_bonus = 0
             jad_pieces = set()
-            if gear_name == "Jad's Ascended Horseshoe":
-                jad_pieces.add("Jad's Ascended Horseshoe")
+            
+            for g in gear_names:
+                g = g.strip()
+                g_item = SHOP_GEAR.get(g, SHOP_GEAR["Rusty Dagger"])
+                total_atk_bonus += g_item['atk']
+                total_def_bonus += g_item['def']
+                total_int_bonus += g_item['int']
+                if "Jad" in g:
+                    jad_pieces.add(g)
             
             self.party[user.id] = {
                 "user": user, "class": class_name, "emoji": cls['emoji'],
                 "max_hp": cls['hp'], "hp": cls['hp'],
-                "atk": gear['atk'] + cls['atk_mod'], 
-                "def": 5 + gear['def'] + cls['def_mod'],
-                "intelligence": gear['int'] + cls['spell_mod'],
+                "atk": total_atk_bonus + cls['atk_mod'], 
+                "def": 5 + total_def_bonus + cls['def_mod'],
+                "intelligence": total_int_bonus + cls['spell_mod'],
                 "passives": passives, 
                 "active_spells": [cls['spell']] if cls['spell'] else [], 
                 "spell_cds": {cls['spell']: 0} if cls['spell'] else {},
@@ -961,7 +958,7 @@ class RPGShopDropdown(discord.ui.Select):
         
         success, msg = db.buy_starter_weapon(interaction.user.id, gear_name, cost)
         if success:
-            await interaction.response.send_message(f"🎉 **Success!** {msg} You have equipped the **{gear_name}**.", ephemeral=True)
+            await interaction.response.send_message(f"🎉 **Success!** {msg}", ephemeral=True)
         else:
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 
@@ -1017,11 +1014,11 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
         cls = CLASSES[class_name.value]
         await interaction.response.send_message(f"✅ You are now a **{class_name.value} {cls['emoji']}**!\n*(HP: {cls['hp']} | ATK: {cls['atk_mod']} | DEF: +{cls['def_mod']})*", ephemeral=True)
 
-    @app_commands.command(name="shop", description="Buy a piece of permanent starting gear!")
+    @app_commands.command(name="shop", description="Buy permanent gear! All purchased gear stacks together.")
     async def shop(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="⚔️ The Blacksmith's Shop", 
-            description="Buy a starting piece of gear for your `/rpg play` runs! You can only equip **one** starting item at a time.",
+            description="Buy permanent gear for your `/rpg play` runs! **All items you purchase permanently stack their stats together!**",
             color=0xe67e22
         )
         for name, data in SHOP_GEAR.items():
@@ -1035,14 +1032,25 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
 
     @app_commands.command(name="profile", description="View your RPG Class, Stats, and Equipped Gear.")
     async def profile(self, interaction: discord.Interaction):
-        gear_name, class_name = db.get_rpg_profile(interaction.user.id)
-        gear = SHOP_GEAR.get(gear_name, SHOP_GEAR["Rusty Dagger"])
+        gear_data, class_name = db.get_rpg_profile(interaction.user.id)
+        gear_names = gear_data.split(',') if gear_data else ["Rusty Dagger"]
         cls = CLASSES.get(class_name, CLASSES["Fighter"])
         
+        total_gear_atk, total_gear_def, total_gear_int = 0, 0, 0
+        gear_display = []
+        
+        for g in gear_names:
+            g = g.strip()
+            g_item = SHOP_GEAR.get(g, SHOP_GEAR["Rusty Dagger"])
+            total_gear_atk += g_item['atk']
+            total_gear_def += g_item['def']
+            total_gear_int += g_item['int']
+            gear_display.append(f"{g_item['emoji']} {g}")
+        
         total_hp = cls['hp']
-        total_atk = gear['atk'] + cls['atk_mod']
-        total_def = 5 + gear['def'] + cls['def_mod']
-        total_int = gear['int'] + cls['spell_mod']
+        total_atk = total_gear_atk + cls['atk_mod']
+        total_def = 5 + total_gear_def + cls['def_mod']
+        total_int = total_gear_int + cls['spell_mod']
         
         embed = discord.Embed(title=f"🛡️ {interaction.user.display_name}'s RPG Profile", color=0x3498db)
         embed.add_field(
@@ -1050,13 +1058,9 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
             value=f"**{cls['emoji']} {class_name}**\n*Passive: {cls['passive'].title().replace('_', ' ') if cls['passive'] else 'None'}*\n*Starter Spell: {cls['spell'].title().replace('_', ' ') if cls['spell'] else 'None'}*", inline=True
         )
         
-        gear_stats = []
-        if gear['atk'] > 0: gear_stats.append(f"ATK: +{gear['atk']}")
-        if gear['def'] > 0: gear_stats.append(f"DEF: +{gear['def']}")
-        if gear['int'] > 0: gear_stats.append(f"INT: +{gear['int']}")
-        gear_str = " | ".join(gear_stats) if gear_stats else "No Stats"
+        gear_str = "\n".join(gear_display) if gear_display else "None"
+        embed.add_field(name="Stacked Armory", value=gear_str, inline=True)
         
-        embed.add_field(name="Equipped Gear", value=f"**{gear['emoji']} {gear_name}**\n*{gear_str}*", inline=True)
         embed.add_field(name="Starting Dungeon Stats", value=f"**❤️ HP:** {total_hp}\n**⚔️ ATK:** {total_atk}\n**🛡️ DEF:** {total_def}\n**🧠 INT:** {total_int}", inline=False)
         await interaction.response.send_message(embed=embed)
 
