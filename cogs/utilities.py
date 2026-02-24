@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import string
+import database as db
 
 class Utilities(commands.Cog, name="Utilities"):
     def __init__(self, bot):
