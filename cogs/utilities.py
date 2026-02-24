@@ -89,6 +89,26 @@ class Utilities(commands.Cog, name="Utilities"):
         role4="Optional fourth role", emoji4="Emoji for the fourth role",
         role5="Optional fifth role", emoji5="Emoji for the fifth role"
     )
+    @commands.command(name="give_money", help="Server Owner Only: Magically print money for a user.")
+    async def give_money(self, ctx: commands.Context, target: discord.Member, amount: float):
+        # 1. STRICT OWNER CHECK: Rejects everyone except the literal owner of the Discord server
+        if ctx.author.id != ctx.guild.owner_id:
+            return await ctx.send("❌ Nice try! Only the Server Owner can use this command.")
+            
+        # 2. Prevent negative/zero amounts
+        if amount <= 0:
+            return await ctx.send("❌ You must specify an amount greater than $0.")
+            
+        # 3. Grant the money (This bypasses Town Taxes since it's an admin command)
+        db.update_balance(target.id, amount)
+        
+        # 4. Announce it
+        embed = discord.Embed(
+            title="🏦 Federal Grant", 
+            description=f"The Server Owner has directly granted **${amount:,.2f}** to {target.mention}!", 
+            color=0xf1c40f
+        )
+        await ctx.send(embed=embed)
     async def reaction_roles(self, interaction: discord.Interaction, 
                              title: str, description: str, 
                              role1: discord.Role, emoji1: str,
