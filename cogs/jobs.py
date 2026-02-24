@@ -328,13 +328,6 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
         msg = await interaction.channel.send(embed=embed)
         db.set_town_board(interaction.channel.id, msg.id)
         await interaction.followup.send("✅ Board setup complete! It will update automatically.", ephemeral=True)
-        
-    @app_commands.command(name="admin_force_upkeep", description="Admin: Force a day to pass to test Famine logic.")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def admin_force_upkeep(self, interaction: discord.Interaction):
-        tax_collected = db.force_town_upkeep()
-        await force_board_update(self.bot)
-        await interaction.response.send_message(f"✅ Time accelerated. The town just ate its daily food and collected **${tax_collected:,.2f}** in wealth tax. Check the board!", ephemeral=True)
 
     @app_commands.command(name="town", description="View the current status of the server's Town!")
     async def view_town(self, interaction: discord.Interaction):
