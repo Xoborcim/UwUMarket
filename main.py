@@ -24,6 +24,15 @@ class MarketBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
+        import shutil
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db.DB_NAME)
+        if os.path.exists(db_path):
+            backup_dir = os.path.join(os.path.dirname(db_path), "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            shutil.copy2(db_path, os.path.join(backup_dir, f"market_{stamp}.db"))
+            print(f"--- Database checkpoint saved: market_{stamp}.db ---")
+
         db.initialize_db()
         
         # Load Casino Cog (Ensure folder cogs/casino.py exists!)
