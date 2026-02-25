@@ -267,6 +267,49 @@ class GuillotineVoteView(discord.ui.View):
             await self.message.edit(embed=embed, view=self)
         except: pass
 
+class ElectionVoteView(discord.ui.View):
+    def __init__(self, candidate, bot):
+        super().__init__(timeout=600)
+        self.candidate = candidate
+        self.bot = bot
+        self.votes = set()
+        self.required_votes = 4
+        self.message = None
+
+    @discord.ui.button(label="Vote Yes (0/4)", style=discord.ButtonStyle.success, emoji="🗳️")
+    async def vote_yes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id in self.votes:
+            return await interaction.response.send_message("❌ You already voted!", ephemeral=True)
+        if interaction.user.id == self.candidate.id:
+            return await interaction.response.send_message("❌ You can't vote in your own election!", ephemeral=True)
+
+        self.votes.add(interaction.user.id)
+
+        if len(self.votes) >= self.required_votes:
+            self.stop()
+            db.set_job(self.candidate.id, "Politician")
+            embed = discord.Embed(
+                title="🏛️ ELECTION WON",
+                description=f"### The people have spoken!\n\n{self.candidate.mention} has been elected as **Politician**!\n\nThey now have the power to set taxes and access the treasury.",
+                color=0x2ecc71
+            )
+            embed.set_thumbnail(url=self.candidate.display_avatar.url)
+            await interaction.response.edit_message(embed=embed, view=None)
+        else:
+            button.label = f"Vote Yes ({len(self.votes)}/{self.required_votes})"
+            await interaction.response.edit_message(view=self)
+
+    async def on_timeout(self):
+        try:
+            self.clear_items()
+            embed = discord.Embed(
+                title="🏛️ Election Failed",
+                description=f"Not enough votes were cast. **{self.candidate.display_name}**'s campaign has ended.",
+                color=0x95a5a6
+            )
+            await self.message.edit(embed=embed, view=self)
+        except: pass
+
 class HackerGame(discord.ui.View):
     def __init__(self, user):
         super().__init__(timeout=15) 
@@ -393,8 +436,36 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
     async def apply(self, interaction: discord.Interaction, job_name: str):
         if job_name not in JOBS:
             return await interaction.response.send_message("❌ That job doesn't exist. Check `/career jobs`.", ephemeral=True)
+        if job_name == "Politician":
+            return await interaction.response.send_message(
+                "🏛️ Politicians must be **elected**! Use `/career run_for_office` to start a campaign.",
+                ephemeral=True)
         db.set_job(interaction.user.id, job_name)
         await interaction.response.send_message(f"🎉 Congratulations! You are now a **{job_name}**!\nUse `/career work` to start your shift.")
+
+    @app_commands.command(name="run_for_office", description="Start a public election to become the town Politician.")
+    @app_commands.checks.cooldown(1, 3600, key=lambda i: i.user.id)
+    async def run_for_office(self, interaction: discord.Interaction):
+        profile = db.get_job_profile(interaction.user.id)
+        if profile and profile['job'] == "Politician":
+            interaction.command.reset_cooldown(interaction)
+            return await interaction.response.send_message("❌ You are already a Politician!", ephemeral=True)
+
+        embed = discord.Embed(
+            title="🏛️ ELECTION: VOTE NOW",
+            description=f"{interaction.user.mention} is running for **Politician**!\n\n**If 4 citizens vote YES, they will be elected into office.**\n\nYou have 10 minutes to cast your vote.",
+            color=0x3498db
+        )
+        embed.set_thumbnail(url=interaction.user.display_avatar.url)
+        view = ElectionVoteView(interaction.user, self.bot)
+        await interaction.response.send_message(embed=embed, view=view)
+        view.message = await interaction.original_response()
+
+    @run_for_office.error
+    async def run_for_office_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            mins = error.retry_after / 60
+            await interaction.response.send_message(f"⏳ You must wait **{mins:.0f} minutes** before running for office again.", ephemeral=True)
 
     @app_commands.command(name="work", description="Go to work and earn your paycheck.")
     async def work(self, interaction: discord.Interaction):
