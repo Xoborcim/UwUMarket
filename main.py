@@ -33,10 +33,9 @@ class MarketBot(commands.Bot):
             shutil.copy2(db_path, os.path.join(backup_dir, f"market_{stamp}.db"))
             print(f"--- Database checkpoint saved: market_{stamp}.db ---")
 
-        db.initialize_db()
+        await db.initialize_db() # Added Await!
         
-        # Load Casino Cog (Ensure folder cogs/casino.py exists!)
-        # Load items
+        # Load Cogs
         try:
             await self.load_extension("cogs.casino")
             await self.load_extension("cogs.items")
@@ -48,7 +47,7 @@ class MarketBot(commands.Bot):
             print(f"⚠️ Could not load cog: {e}")
 
         # Re-register Views
-        active_markets = db.get_active_markets()
+        active_markets = await db.get_active_markets() # Added Await!
         print(f"--- Restoring {len(active_markets)} Active Markets ---")
         for m in active_markets:
             view = MarketView(m['market_id'], m['options'], m['question'], m['close_time'])
@@ -63,7 +62,7 @@ class MarketBot(commands.Bot):
     async def update_leaderboard_task(self):
         channel = self.get_channel(LEADERBOARD_CHANNEL_ID)
         if not channel: return
-        leaders = db.get_leaderboard(10)
+        leaders = await db.get_leaderboard(10) # Added Await!
         embed = discord.Embed(title="🏆 Live Wealth Leaderboard", color=0xf1c40f)
         description = "No data yet." if not leaders else ""
         for i, row in enumerate(leaders):
@@ -80,14 +79,14 @@ class MarketBot(commands.Bot):
 
     @tasks.loop(minutes=1)
     async def check_expired_markets_task(self):
-        expired = db.get_expired_markets()
+        expired = await db.get_expired_markets() # Added Await!
         if not expired: return
         botspam = self.get_channel(BOTSPAM_CHANNEL_ID)
         jury_role = None
         if botspam: jury_role = discord.utils.get(botspam.guild.roles, name="Jury")
         for market in expired:
             mid = market['market_id']
-            db.close_market_betting(mid)
+            await db.close_market_betting(mid) # Added Await!
             if botspam:
                 ping = jury_role.mention if jury_role else "@Jury"
                 await botspam.send(f"⏰ **Market {mid} Expired!**\n{ping}, please cast your votes with `/vote {mid} [OUTCOME]`\n> {market['question']}")
@@ -101,36 +100,42 @@ bot = MarketBot()
 
 # --- HELPER: RESOLUTION LOGIC ---
 async def perform_resolution(interaction: discord.Interaction, market_id: int, winner: str):
-    success, logs, question = db.resolve_market(market_id, winner)
+    success, logs, question = await db.resolve_market(market_id, winner) # Added Await!
     if not success:
         if interaction.response.is_done(): await interaction.followup.send(f"❌ Error: {logs[0]}")
         else: await interaction.response.send_message(f"❌ Error: {logs[0]}", ephemeral=True)
         return
-    msg_id = db.get_market_message_id(market_id)
+        
+    msg_id = await db.get_market_message_id(market_id) # Added Await!
     market_channel = bot.get_channel(MARKET_CHANNEL_ID)
     if market_channel and msg_id:
         try:
             old_msg = await market_channel.fetch_message(msg_id)
             await old_msg.delete()
         except: pass 
+        
     closed_channel = bot.get_channel(CLOSED_CHANNEL_ID)
-    volume = db.get_market_volume(market_id)
+    volume = await db.get_market_volume(market_id) # Added Await!
+    
     if closed_channel:
         embed = discord.Embed(title=f"🔒 Market Resolved: {winner.upper()}", color=0xf1c40f)
         embed.description = f"**Question:** {question}\n**Winner:** {winner.upper()}"
         embed.add_field(name="💰 Total Volume", value=f"${volume:,.2f}", inline=False)
         await closed_channel.send(embed=embed)
+        
     botspam = bot.get_channel(BOTSPAM_CHANNEL_ID)
     msg = "\n".join(logs) if logs else "No winners."
     if len(msg) > 1900: msg = msg[:1900] + "... (truncated)"
     if botspam: await botspam.send(f"💸 **Payouts for Market {market_id}:**\n{msg}")
+    
     if not interaction.response.is_done(): await interaction.response.send_message(f"✅ Resolved Market {market_id}.", ephemeral=True)
     else: await interaction.followup.send(f"✅ Resolved Market {market_id}.", ephemeral=True)
 
 # --- UI COMPONENTS ---
-def create_market_embed(market_id, question, close_time):
-    odds = db.get_odds(market_id)
-    volume = db.get_market_volume(market_id)
+# Made this async because the odds and volume checks are now async
+async def create_market_embed(market_id, question, close_time):
+    odds = await db.get_odds(market_id)
+    volume = await db.get_market_volume(market_id)
     
     embed = discord.Embed(title=f"🆔 {market_id}: {question}", color=0x3498db)
     embed.add_field(name="💰 Volume", value=f"${volume:,.2f}", inline=True)
@@ -151,13 +156,18 @@ class BetModal(ui.Modal, title="Place Your Bet"):
     def __init__(self, market_id, outcome_label, market_question, close_time):
         super().__init__()
         self.market_id = market_id; self.outcome_label = outcome_label; self.market_question = market_question; self.close_time = close_time
+        
     async def on_submit(self, interaction: discord.Interaction):
         try: amt = float(self.amount.value)
         except: return await interaction.response.send_message("❌ Invalid number.", ephemeral=True)
-        success, msg = db.buy_shares(interaction.user.id, self.market_id, self.outcome_label, amt)
+        
+        success, msg = await db.buy_shares(interaction.user.id, self.market_id, self.outcome_label, amt) # Added Await!
+        
         if success:
             await interaction.response.send_message(f"✅ **Bet Placed!** {msg}", ephemeral=True)
-            try: await interaction.message.edit(embed=create_market_embed(self.market_id, self.market_question, self.close_time))
+            try: 
+                new_embed = await create_market_embed(self.market_id, self.market_question, self.close_time)
+                await interaction.message.edit(embed=new_embed)
             except: pass
         else: await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 
@@ -181,7 +191,6 @@ class MarketView(ui.View):
 @app_commands.describe(question="The question", end_date="YYYY-MM-DD", end_time="HH:MM (24h)", duration_hours="Or just hours (e.g. 24)")
 async def create(interaction: discord.Interaction, question: str, end_date: str = None, end_time: str = None, duration_hours: int = None, option1: str = "YES", option2: str = "NO"):
     
-    # Check for overflow first
     if duration_hours and duration_hours > 8760:
         return await interaction.response.send_message("❌ Duration too long. Max is 1 year.", ephemeral=True)
 
@@ -201,17 +210,16 @@ async def create(interaction: discord.Interaction, question: str, end_date: str 
     if close_dt < datetime.datetime.now():
          return await interaction.response.send_message("❌ Closing time cannot be in the past.", ephemeral=True)
 
-    # CALLING THE NEW FUNCTION CORRECTLY
-    market_id = db.create_market_custom_date(question, interaction.user.id, close_dt, [option1, option2])
+    market_id = await db.create_market_custom_date(question, interaction.user.id, close_dt, [option1, option2]) # Added Await!
     
-    embed = create_market_embed(market_id, question, close_dt)
+    embed = await create_market_embed(market_id, question, close_dt) # Added Await!
     view = MarketView(market_id, [option1, option2], question, close_dt)
     
     channel = bot.get_channel(MARKET_CHANNEL_ID)
     await interaction.response.send_message(f"✅ Market created in {channel.mention}!", ephemeral=True)
     if channel:
         msg = await channel.send(embed=embed, view=view)
-        db.set_market_message_id(market_id, msg.id)
+        await db.set_market_message_id(market_id, msg.id) # Added Await!
 
 @bot.tree.command(name="resolve")
 async def resolve(interaction: discord.Interaction, market_id: int, winner: str):
@@ -224,12 +232,15 @@ async def resolve(interaction: discord.Interaction, market_id: int, winner: str)
 async def vote(interaction: discord.Interaction, market_id: int, outcome: str):
     jury_role = discord.utils.get(interaction.user.roles, name="Jury")
     if not jury_role: return await interaction.response.send_message("⛔ Need 'Jury' role.", ephemeral=True)
-    success, msg = db.cast_jury_vote(interaction.user.id, market_id, outcome)
+    
+    success, msg = await db.cast_jury_vote(interaction.user.id, market_id, outcome) # Added Await!
     if not success: return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+    
     total_jurors = len(jury_role.members)
     majority = math.floor(total_jurors / 2) + 1
-    tally = db.get_market_vote_tally(market_id)
+    tally = await db.get_market_vote_tally(market_id) # Added Await!
     votes = tally.get(outcome, 0)
+    
     await interaction.response.send_message(f"🗳️ Voted! {outcome}: {votes}/{total_jurors}", ephemeral=True)
     if votes >= majority:
         await interaction.channel.send(f"🚨 **Majority Reached!** Resolving...")
@@ -237,8 +248,9 @@ async def vote(interaction: discord.Interaction, market_id: int, outcome: str):
 
 @bot.tree.command(name="portfolio")
 async def portfolio(interaction: discord.Interaction):
-    bets = db.get_user_portfolio(interaction.user.id)
+    bets = await db.get_user_portfolio(interaction.user.id) # Added Await!
     if not bets: return await interaction.response.send_message("📉 You have no active bets.", ephemeral=True)
+    
     embed = discord.Embed(title="📂 Your Portfolio", color=0x9b59b6)
     for row in bets:
         status_icon = "🟢" if row['status'] == 'OPEN' else "🔒"
@@ -247,22 +259,22 @@ async def portfolio(interaction: discord.Interaction):
 
 @bot.tree.command(name="balance")
 async def balance(interaction: discord.Interaction):
-    bal = db.get_balance(interaction.user.id)
+    bal = await db.get_balance(interaction.user.id) # Added Await!
     await interaction.response.send_message(f"💳 Balance: **${bal:,.2f}**")
 
 @bot.tree.command(name="daily")
 async def daily(interaction: discord.Interaction):
-    success, msg = db.process_daily(interaction.user.id)
+    success, msg = await db.process_daily(interaction.user.id) # Added Await!
     await interaction.response.send_message(f"{'✅' if success else '⏳'} {msg}", ephemeral=not success)
 
 @bot.tree.command(name="close")
 async def close(interaction: discord.Interaction, market_id: int):
-    db.close_market_betting(market_id)
+    await db.close_market_betting(market_id) # Added Await!
     await interaction.response.send_message(f"🔒 Market {market_id} closed.", ephemeral=True)
 
 @bot.tree.command(name="leaderboard")
 async def leaderboard(interaction: discord.Interaction):
-    leaders = db.get_leaderboard(10)
+    leaders = await db.get_leaderboard(10) # Added Await!
     embed = discord.Embed(title="🏆 Wealth Leaderboard", color=0xf1c40f)
     desc = ""
     for i, r in enumerate(leaders):
@@ -279,12 +291,12 @@ async def transfer(interaction: discord.Interaction, recipient: discord.Member, 
     
     amount = round(amount, 2)
     
-    # Deduct from sender
-    if not db.update_balance(interaction.user.id, -amount):
+    # Deduct from sender (Added Await!)
+    if not await db.update_balance(interaction.user.id, -amount):
         return await interaction.response.send_message("❌ Insufficient funds.", ephemeral=True)
     
-    # Add to recipient
-    db.update_balance(recipient.id, amount)
+    # Add to recipient (Added Await!)
+    await db.update_balance(recipient.id, amount) 
     
     await interaction.response.send_message(f"💸 **Transfer Complete!** You sent **${amount:,.2f}** to {recipient.mention}.")
 
