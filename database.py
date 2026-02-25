@@ -769,3 +769,29 @@ def get_rpg_analytics():
             "deadliest": deadliest
         }
     finally: conn.close()
+
+
+def execute_player(user_id, penalty_fraction=0.50):
+    """VIVE LA REVOLUTION: Takes 50% of their money, fires them, and gives money to town."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        
+        # Look at their bank account
+        user = c.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        
+        if not user or user['balance'] <= 0:
+            seized_funds = 0.0
+        else:
+            seized_funds = round(user['balance'] * penalty_fraction, 2)
+        
+        # Take the money and strip them of their job
+        c.execute("UPDATE users SET balance = balance - ?, job = 'Unemployed' WHERE user_id = ?", (seized_funds, user_id))
+        
+        # Dump the seized funds into the town treasury
+        c.execute("UPDATE town SET treasury = COALESCE(treasury, 0.0) + ? WHERE id=1", (seized_funds,))
+        
+        conn.commit()
+        return seized_funds
+    finally: conn.close()
