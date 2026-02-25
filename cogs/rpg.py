@@ -230,10 +230,10 @@ class RPGLevelUpView(discord.ui.View):
         self.user_id = user_id
         
         options = [
-            discord.SelectOption(label="Train Body", description="+25 Max HP, Heals 25 HP", emoji="❤️", value="hp"),
-            discord.SelectOption(label="Train Arms", description="+8 Attack", emoji="⚔️", value="atk"),
-            discord.SelectOption(label="Study Magic", description="+3 Intelligence", emoji="🧠", value="int"),
-            discord.SelectOption(label="Harden Armor", description="+5 Defense", emoji="🛡️", value="def")
+            discord.SelectOption(label="Train Body", description="Max HP & Huge Heal (Scales w/ Lvl)", emoji="❤️", value="hp"),
+            discord.SelectOption(label="Train Arms", description="Boost Attack (Scales w/ Lvl)", emoji="⚔️", value="atk"),
+            discord.SelectOption(label="Study Magic", description="Boost INT (Scales w/ Lvl)", emoji="🧠", value="int"),
+            discord.SelectOption(label="Harden Armor", description="Boost Defense (Scales w/ Lvl)", emoji="🛡️", value="def")
         ]
         select = discord.ui.Select(placeholder="Choose your stat upgrade...", min_values=1, max_values=1, options=options)
         select.callback = self.callback
@@ -247,26 +247,35 @@ class RPGLevelUpView(discord.ui.View):
                 
             choice = self.children[0].values[0]
             p['pending_level'] -= 1
+            lvl = p['level']
+            
+            # THE BUFF: Stats now scale up the higher level you are!
+            # Also, leveling up automatically heals you for 50% of your Max HP!
+            heal_amount = p['max_hp'] // 2
+            p['hp'] = min(p['max_hp'], p['hp'] + heal_amount)
             
             if choice == "hp":
-                p['max_hp'] += 25
-                p['hp'] += 25
-                msg = "+25 Max HP"
+                gain = 20 + (lvl * 5)
+                p['max_hp'] += gain
+                p['hp'] += gain 
+                msg = f"+{gain} Max HP"
             elif choice == "atk":
-                p['atk'] += 8
-                msg = "+8 Attack"
+                gain = 6 + (lvl * 2)
+                p['atk'] += gain
+                msg = f"+{gain} Attack"
             elif choice == "int":
-                p['intelligence'] += 3
-                msg = "+3 Intelligence"
+                gain = 2 + (lvl * 1)
+                p['intelligence'] += gain
+                msg = f"+{gain} Intelligence"
             elif choice == "def":
-                p['def'] += 5
-                msg = "+5 Defense"
+                gain = 4 + (lvl * 1)
+                p['def'] += gain
+                msg = f"+{gain} Defense"
                 
-            await interaction.response.send_message(f"🌟 You leveled up and selected **{msg}**!", ephemeral=True)
+            await interaction.response.send_message(f"🌟 You leveled up! Healed for 50% HP and gained **{msg}**!", ephemeral=True)
             if self.session.message:
                 self.session.build_ui()
                 await self.session.message.edit(embed=self.session.get_embed(), view=self.session)
-
 
 # --- THE CO-OP ENGINE ---
 class RPGSession(discord.ui.View):
@@ -744,8 +753,15 @@ class RPGSession(discord.ui.View):
                 elif 'dodge' in t_player['passives'] and random.random() < dodge_chance:
                     self.log += f"💨 {self.enemy['name']} attacks {t_player['user'].display_name}, but they DODGED!\n"
                 else:
+                    else:
                     is_defending = self.combat_moves.get(target_id) == "defend"
-                    dmg = max(1, self.enemy['atk'] - t_player['def'] + random.randint(-2, 2))
+                    
+                    # THE NERF: Diminishing returns armor formula instead of flat subtraction
+                    # 50 DEF = 33% reduction. 100 DEF = 50% reduction.
+                    mitigation = 100 / (100 + t_player['def'])
+                    dmg = max(1, int(self.enemy['atk'] * mitigation) + random.randint(-2, 2))
+                    
+                    # Defending still halves damage
                     if is_defending: dmg = max(0, dmg // 2)
                     
                     t_player['hp'] -= dmg
@@ -808,9 +824,8 @@ class RPGSession(discord.ui.View):
                     self.log += f"🦇 Vampire Fangs heal {p['user'].display_name} for {heal} HP!\n"
                 
             elif move == "defend":
-                base_heal = max(1, p['def'] // 2)
-                max_heal = max(base_heal + 1, p['def'])
-                heal = random.randint(base_heal, max_heal)
+                # THE NERF: Defend now heals for exactly 10% of Max HP, preventing infinite DEF scaling
+                heal = max(5, int(p['max_hp'] * 0.10))
                 p['hp'] = min(p['max_hp'], p['hp'] + heal)
                 self.log += f"🛡️ {p['user'].display_name} defends and heals {heal} HP.\n"
                 
