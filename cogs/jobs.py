@@ -223,6 +223,49 @@ class MinerGame(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
         await force_board_update(interaction.client) 
         self.stop()
+class GuillotineVoteView(discord.ui.View):
+    def __init__(self, target, initiator, bot):
+        super().__init__(timeout=120) # 2 minutes to vote
+        self.target = target
+        self.initiator = initiator
+        self.bot = bot
+        self.votes = set()
+        self.required_votes = 5 # ⚠️ Change this number if you want more or fewer people to vote!
+        
+    @discord.ui.button(label="Guilty! (0/5)", style=discord.ButtonStyle.danger, emoji="🔪")
+    async def vote_guilty(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id in self.votes:
+            return await interaction.response.send_message("❌ You already cast your vote!", ephemeral=True)
+        if interaction.user.id == self.target.id:
+            return await interaction.response.send_message("❌ You can't vote at your own execution!", ephemeral=True)
+            
+        self.votes.add(interaction.user.id)
+        
+        if len(self.votes) >= self.required_votes:
+            self.stop()
+            seized = db.execute_player(self.target.id, 0.50) # 0.50 = 50% penalty
+            
+            head_name = f"{self.target.display_name}'s Severed Head"
+            db.add_item(self.initiator.id, head_name, "Mythic", "Trophy")
+            
+            embed = discord.Embed(
+                title="🩸 PUBLIC EXECUTION 🩸", 
+                description=f"### VIVE LA RÉVOLUTION!\n\nThe mob has spoken! **{self.target.mention}** was executed for crimes against Polyville.\n\n**50% of their wealth (${seized:,.2f})** has been seized and returned to the Town Treasury!\n\n*{self.initiator.display_name} kept the head as a trophy.*", 
+                color=0x8a0303
+            )
+            embed.set_thumbnail(url=self.target.display_avatar.url)
+            await interaction.response.edit_message(embed=embed, view=None)
+            await force_board_update(self.bot)
+        else:
+            button.label = f"Guilty! ({len(self.votes)}/{self.required_votes})"
+            await interaction.response.edit_message(view=self)
+            
+    async def on_timeout(self):
+        try:
+            self.clear_items()
+            embed = discord.Embed(title="🕊️ Execution Failed", description=f"The mob lost interest. Not enough votes were cast. **{self.target.display_name}** survives another day.", color=0x95a5a6)
+            await self.message.edit(embed=embed, view=self)
+        except: pass
 
 class HackerGame(discord.ui.View):
     def __init__(self, user):
@@ -457,6 +500,32 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
 
     async def craft_autocomplete(self, interaction: discord.Interaction, current: str):
         return [app_commands.Choice(name=r, value=r) for r in RECIPES.keys() if current.lower() in r.lower()]
+    
+    
+    @app_commands.command(name="guillotine", description="Start a public vote to execute a citizen and seize 50% of their wealth.")
+    @app_commands.checks.cooldown(1, 43200, key=lambda i: i.user.id) # 12 Hour cooldown
+    async def guillotine(self, interaction: discord.Interaction, target: discord.Member):
+        if target.bot:
+            interaction.command.reset_cooldown(interaction)
+            return await interaction.response.send_message("❌ You cannot execute a machine.", ephemeral=True)
+        if target.id == interaction.user.id:
+            interaction.command.reset_cooldown(interaction)
+            return await interaction.response.send_message("❌ You cannot execute yourself.", ephemeral=True)
+            
+        embed = discord.Embed(
+            title="⚖️ TRIBUNAL: VIVE LA RÉVOLUTION",
+            description=f"{interaction.user.mention} has accused {target.mention} of corruption and dragged them to the Guillotine!\n\n**If 5 citizens vote GUILTY, 50% of their bank account will be seized by the town!**\n\nYou have 2 minutes to cast your vote.",
+            color=0xe67e22
+        )
+        view = GuillotineVoteView(target, interaction.user, self.bot)
+        await interaction.response.send_message(embed=embed, view=view)
+        view.message = await interaction.original_response()
+
+    @guillotine.error
+    async def guillotine_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            hours = error.retry_after / 3600
+            await interaction.response.send_message(f"⏳ You must wait **{hours:.1f} hours** before starting another riot.", ephemeral=True)
 
     @app_commands.command(name="craft", description="[Blacksmith] Craft RPG items out of ores to sell on the market.")
     @app_commands.autocomplete(recipe_name=craft_autocomplete)
