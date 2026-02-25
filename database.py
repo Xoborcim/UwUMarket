@@ -775,15 +775,35 @@ def _replay_analytics_query(query_str, context=None):
 def log_rpg_run(floor, outcome, gold, party_data, killer=None):
     conn = get_connection()
     try:
+        c = conn.cursor()
         # Create a string like "Paladin, Mage, Cleric"
         classes = ", ".join([p['class'] for p in party_data])
-        conn.execute("""
+        c.execute("""
             INSERT INTO rpg_analytics 
             (floor_reached, outcome, gold_earned, party_size, party_classes, killer_enemy) 
             VALUES (?, ?, ?, ?, ?, ?)""",
             (floor, outcome, gold, len(party_data), classes, killer)
         )
+        
+        # --- NEW: UPDATE MAX FLOOR FOR EACH INDIVIDUAL PLAYER ---
+        for p in party_data:
+            uid = p['user'].id
+            c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (uid,))
+            
+            user_row = c.execute("SELECT max_floor FROM users WHERE user_id = ?", (uid,)).fetchone()
+            current_max = user_row['max_floor'] if user_row and user_row['max_floor'] else 0
+            
+            # If they reached a deeper floor than their previous record, update it!
+            if floor > current_max:
+                c.execute("UPDATE users SET max_floor = ? WHERE user_id = ?", (floor, uid))
+                
         conn.commit()
+    finally: conn.close()
+        
+def get_rpg_leaderboard(limit=10):
+    conn = get_connection()
+    try:
+        return conn.execute("SELECT user_id, max_floor FROM users WHERE max_floor > 0 ORDER BY max_floor DESC LIMIT ?", (limit,)).fetchall()
     finally: conn.close()
 
 def get_rpg_analytics():
