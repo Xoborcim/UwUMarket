@@ -767,60 +767,57 @@ class RPGSession(discord.ui.View):
         if self.enemy['hp'] <= self.enemy['max_hp'] * 0.3 and not self.enemy.get('enraged') and self.enemy.get('boss'):
             self.enemy['enraged'] = True
             self.enemy['atk'] = int(self.enemy['atk'] * 1.1) 
-            self.log += f"⚠️ THE {self.enemy['name'].upper()} BECOMES ENRAGED! ATK INCREASED! IT ATTACKS TWICE!\n"
+            self.log += f"⚠️ THE {self.enemy['name'].upper()} BECOMES ENRAGED! ATK INCREASED!\n"
             
-        attacks = 2 if self.enemy.get('enraged') else 1
+        target_pool = []
+        taunters = [uid for uid, p in self.party.items() if self.combat_moves.get(uid) == "defend" and p['class'] == 'Tank' and p['hp'] > 0]
         
-        for _ in range(attacks):
-            target_pool = []
-            taunters = [uid for uid, p in self.party.items() if self.combat_moves.get(uid) == "defend" and p['class'] == 'Tank' and p['hp'] > 0]
+        if taunters:
+            target_pool = taunters
+        else:
+            for uid in self.get_alive_players():
+                weight = 3 if self.party[uid]['class'] == 'Tank' else 1
+                target_pool.extend([uid] * weight)
+                
+        if target_pool:
+            target_id = random.choice(target_pool)
+            t_player = self.party[target_id]
             
-            if taunters:
-                target_pool = taunters
+            divine_cleric = any('divine interference' in self.party[uid]['passives'] for uid in self.get_alive_players())
+            dodge_chance = 0.20 + (0.15 if 'dodge' in self.relics else 0.0)
+            
+            if divine_cleric and random.random() < 0.15:
+                self.log += f"✨ Divine Interference protected {t_player['user'].display_name} from all damage!\n"
+            elif 'dodge' in t_player['passives'] and random.random() < dodge_chance:
+                self.log += f"💨 {self.enemy['name']} attacks {t_player['user'].display_name}, but they DODGED!\n"
             else:
-                for uid in self.get_alive_players():
-                    weight = 3 if self.party[uid]['class'] == 'Tank' else 1
-                    target_pool.extend([uid] * weight)
-                    
-            if target_pool:
-                target_id = random.choice(target_pool)
-                t_player = self.party[target_id]
+                is_defending = self.combat_moves.get(target_id) == "defend"
                 
-                divine_cleric = any('divine interference' in self.party[uid]['passives'] for uid in self.get_alive_players())
-                dodge_chance = 0.20 + (0.15 if 'dodge' in self.relics else 0.0)
-                
-                if divine_cleric and random.random() < 0.15:
-                    self.log += f"✨ Divine Interference protected {t_player['user'].display_name} from all damage!\n"
-                elif 'dodge' in t_player['passives'] and random.random() < dodge_chance:
-                    self.log += f"💨 {self.enemy['name']} attacks {t_player['user'].display_name}, but they DODGED!\n"
+                # THE FIX: Safely handle both positive and negative armor!
+                if t_player['def'] >= 0:
+                    # Positive Defense: Diminishing damage reduction (50 DEF = ~33% reduction)
+                    mitigation = 100 / (100 + t_player['def'])
                 else:
-                    is_defending = self.combat_moves.get(target_id) == "defend"
+                    # Negative Defense (Cursed): Amplifies damage taken (-50 DEF = 1.5x damage taken)
+                    mitigation = 1 + (abs(t_player['def']) / 100)
                     
-                    # THE FIX: Safely handle both positive and negative armor!
-                    if t_player['def'] >= 0:
-                        # Positive Defense: Diminishing damage reduction (50 DEF = ~33% reduction)
-                        mitigation = 100 / (100 + t_player['def'])
-                    else:
-                        # Negative Defense (Cursed): Amplifies damage taken (-50 DEF = 1.5x damage taken)
-                        mitigation = 1 + (abs(t_player['def']) / 100)
-                        
-                    dmg = max(1, int(self.enemy['atk'] * mitigation) + random.randint(-2, 2))
-                    
-                    # Defending still halves damage
-                    if is_defending: dmg = max(0, dmg // 2)
-                    
-                    t_player['hp'] -= dmg
-                    self.log += f"💥 {self.enemy['name']} hits {t_player['user'].display_name} for {dmg} DMG!\n"
-                    
-                    if 'thorns' in t_player['passives'] and dmg > 0:
-                        thorn_dmg = max(1, dmg // 3) 
-                        self.enemy['hp'] -= thorn_dmg
-                        self.log += f" 🌵 Thorns reflected {thorn_dmg} DMG!\n"
-                    
-                    if self.enemy.get('effect') and random.random() < self.enemy['chance'] and t_player['status'] is None:
-                        t_player['status'] = self.enemy['effect']
-                        t_player['status_dur'] = 2
-                        self.log += f" They were {self.enemy['effect']}ed!\n"
+                dmg = max(1, int(self.enemy['atk'] * mitigation) + random.randint(-2, 2))
+                
+                # Defending still halves damage
+                if is_defending: dmg = max(0, dmg // 2)
+                
+                t_player['hp'] -= dmg
+                self.log += f"💥 {self.enemy['name']} hits {t_player['user'].display_name} for {dmg} DMG!\n"
+                
+                if 'thorns' in t_player['passives'] and dmg > 0:
+                    thorn_dmg = max(1, dmg // 3) 
+                    self.enemy['hp'] -= thorn_dmg
+                    self.log += f" 🌵 Thorns reflected {thorn_dmg} DMG!\n"
+                
+                if self.enemy.get('effect') and random.random() < self.enemy['chance'] and t_player['status'] is None:
+                    t_player['status'] = self.enemy['effect']
+                    t_player['status_dur'] = 2
+                    self.log += f" They were {self.enemy['effect']}ed!\n"
 
     async def resolve_round(self, interaction):
         self.log = "-- COMBAT ROUND --\n"
