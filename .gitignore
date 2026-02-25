@@ -5,7 +5,6 @@ market.db
 venv/
 env/
 .venv/
-launcher.py
 
 # --- Compiled Python Files ---
 __pycache__/
