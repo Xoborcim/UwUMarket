@@ -76,6 +76,8 @@ def initialize_db():
         except: pass
         try: c.execute("ALTER TABLE inventory ADD COLUMN set_name TEXT DEFAULT 'Base_Set'")
         except: pass
+        try: c.execute("ALTER TABLE users ADD COLUMN max_floor INTEGER DEFAULT 0")
+        except: pass
         
         # LIVE BOARD MIGRATIONS
         try: c.execute("ALTER TABLE town ADD COLUMN board_channel_id INTEGER")
