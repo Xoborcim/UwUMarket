@@ -641,13 +641,50 @@ class RPGSession(discord.ui.View):
         await interaction.response.defer()
         async with self.lock:
             p = self.party[interaction.user.id]
-            if random.random() < 0.5:
-                p['atk'] += 10
-                self.log = f"💪 The potion surges with power! {interaction.user.display_name} gains +10 ATK!"
+            
+            # 1. Pick a random stat
+            stat_choice = random.choice(["max_hp", "atk", "def", "intelligence"])
+            
+            # 2. Calculate a scaling magnitude based on the current floor
+            if stat_choice == "max_hp":
+                magnitude = random.randint(15, 30) + self.floor
+                stat_name = "Max HP"
+                emoji = "❤️"
+            elif stat_choice == "atk":
+                magnitude = random.randint(3, 8) + (self.floor // 3)
+                stat_name = "Attack"
+                emoji = "⚔️"
+            elif stat_choice == "def":
+                magnitude = random.randint(2, 5) + (self.floor // 4)
+                stat_name = "Defense"
+                emoji = "🛡️"
             else:
-                p['status'] = 'poison'
-                p['status_dur'] = 3
-                self.log = f"🤢 The potion was toxic! {interaction.user.display_name} is poisoned!"
+                magnitude = random.randint(2, 5) + (self.floor // 4)
+                stat_name = "Intelligence"
+                emoji = "🧠"
+
+            # 3. 50/50 Chance to Buff or Debuff
+            if random.random() < 0.5:
+                # BUFF
+                if stat_choice == "max_hp":
+                    p['max_hp'] += magnitude
+                    p['hp'] += magnitude # Heal them for the new bonus HP
+                else:
+                    p[stat_choice] += magnitude
+                
+                self.log = f"✨ The potion tastes like ambrosia! {interaction.user.display_name} permanently gains +{magnitude} {stat_name} {emoji}!"
+            else:
+                # DEBUFF
+                if stat_choice == "max_hp":
+                    p['max_hp'] = max(10, p['max_hp'] - magnitude) # Prevent max HP from going below 10
+                    p['hp'] = min(p['hp'], p['max_hp']) # Adjust current HP if it exceeds the new Max HP
+                else:
+                    p[stat_choice] -= magnitude
+                    # Keep ATK and INT from dropping below 0, but allow Defense to go negative (taking extra damage)
+                    if stat_choice in ["atk", "intelligence"] and p[stat_choice] < 0:
+                        p[stat_choice] = 0
+                        
+                self.log = f"🤢 The potion was a volatile curse! {interaction.user.display_name} permanently loses -{magnitude} {stat_name} {emoji}..."
                 
             self.state = "EXPLORE"
             self.floor += 1
