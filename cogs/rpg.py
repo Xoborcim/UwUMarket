@@ -7,15 +7,16 @@ import asyncio
 
 # --- RPG DATA ---
 CLASSES = {
-    "Fighter": {"hp": 100, "atk_mod": 0, "def_mod": 0, "spell_mod": 0, "emoji": "🗡️", "passive": 'unleashed rage', "spell": None},
-    "Assassin": {"hp": 70, "atk_mod": 5, "def_mod": -2, "spell_mod": 0, "emoji": "🥷", "passive": "dodge", "spell": None},
+    "Fighter": {"hp": 130, "atk_mod": 6, "def_mod": 3, "spell_mod": 0, "emoji": "🗡️", "passive": 'unleashed rage', "spell": None},
+    "Assassin": {"hp": 95, "atk_mod": 12, "def_mod": 0, "spell_mod": 0, "emoji": "🥷", "passive": "dodge", "spell": None},
     "Tank": {"hp": 150, "atk_mod": -3, "def_mod": 4, "spell_mod": 0, "emoji": "🛡️", "passive": "thorns", "spell": None},
-    "Cleric": {"hp": 85, "atk_mod": -4, "def_mod": 0, "spell_mod": 0, "emoji": "🪄", "passive": 'divine interference', "spell": "party_heal"},
-    "Mage": {"hp": 60, "atk_mod": -4, "def_mod": 0, "spell_mod": 3, "emoji": "🔮", "passive": 'dodge', "spell": "poison"},
-    "Paladin": {"hp": 130, "atk_mod": -2, "def_mod": 3, "spell_mod": 1, "emoji": "⚜️", "passive": 'divine interference', "spell": None},
-    "Berserker": {"hp": 110, "atk_mod": 8, "def_mod": -4, "spell_mod": 0, "emoji": "🪓", "passive": 'unleashed rage', "spell": None},
-    "Warlock": {"hp": 75, "atk_mod": -2, "def_mod": 0, "spell_mod": 2, "emoji": "👿", "passive": 'thorns', "spell": "hellfire"},
-    "Cryomancer": {"hp": 65, "atk_mod": -3, "def_mod": 1, "spell_mod": 2, "emoji": "❄️", "passive": "dodge", "spell": "frostbite"}
+    "Cleric": {"hp": 110, "atk_mod": -2, "def_mod": 3, "spell_mod": 4, "emoji": "🪄", "passive": 'divine interference', "spell": "party_heal"},
+    "Mage": {"hp": 80, "atk_mod": -2, "def_mod": 1, "spell_mod": 8, "emoji": "🔮", "passive": 'dodge', "spell": "hellfire"},
+    "Paladin": {"hp": 150, "atk_mod": 2, "def_mod": 5, "spell_mod": 2, "emoji": "⚜️", "passive": 'divine interference', "spell": None},
+    "Berserker": {"hp": 140, "atk_mod": 15, "def_mod": -2, "spell_mod": 0, "emoji": "🪓", "passive": 'unleashed rage', "spell": None},
+    "Warlock": {"hp": 95, "atk_mod": 0, "def_mod": 2, "spell_mod": 6, "emoji": "👿", "passive": 'thorns', "spell": "hellfire"},
+    "Cryomancer": {"hp": 85, "atk_mod": 0, "def_mod": 3, "spell_mod": 6, "emoji": "❄️", "passive": "dodge", "spell": "frostbite"},
+    "Venomancer": {"hp": 85, "atk_mod": -1, "def_mod": 2, "spell_mod": 7, "emoji": "🐍", "passive": "dodge", "spell": "poison"}
 }
 
 # --- SHOP GEAR ---
@@ -336,9 +337,12 @@ class RPGSession(discord.ui.View):
     def generate_paths(self):
         self.paths = []
         
+        # EASY EARLY GAME, HARD LATE GAME SCALING
+        # Floor 1: ~0.85x | Floor 10: ~1.5x | Floor 20: ~2.6x | Floor 30: ~4.1x
+        multiplier = 0.8 + (self.floor * 0.05) + ((self.floor ** 2) * 0.002)
+        
         if self.floor > 0 and self.floor % 10 == 0:
             base = random.choice(BOSSES)
-            multiplier = 1.0 + (self.floor * 0.1)
             party_size = len(self.party)
             enemy = {
                 "name": base['name'], "emoji": base['emoji'],
@@ -352,7 +356,6 @@ class RPGSession(discord.ui.View):
             return
 
         base1 = random.choice(ENEMIES)
-        multiplier = 1.0 + (self.floor * 0.1)
         enemy1 = {
             "name": base1['name'], "emoji": base1['emoji'],
             "hp": int(base1['hp'] * multiplier * len(self.party)), 
@@ -419,7 +422,11 @@ class RPGSession(discord.ui.View):
             self.add_item(btn_defend)
             self.add_item(btn_spell)
             
-            btn_flee = discord.ui.Button(label="Flee (50%)", style=discord.ButtonStyle.secondary, emoji="🏃", custom_id=f"flee_{self.session_id}", row=1)
+            # --- BOSS FLEE LOCK ---
+            btn_flee = discord.ui.Button(label="Flee (-$150)", style=discord.ButtonStyle.secondary, emoji="🏃", custom_id=f"flee_{self.session_id}", row=1)
+            if self.enemy and self.enemy.get('boss'):
+                btn_flee.disabled = True
+                btn_flee.label = "Cannot Flee Boss!"
             btn_flee.callback = self.action_flee
             self.add_item(btn_flee)
             
@@ -432,11 +439,17 @@ class RPGSession(discord.ui.View):
             self.add_item(btn_ignore)
             
         elif self.state == "SHRINE":
-            btn_revive = discord.ui.Button(label="Sacrifice 50% HP to Revive", style=discord.ButtonStyle.success, emoji="👼", custom_id=f"shrine_{self.session_id}", row=0)
+            btn_revive = discord.ui.Button(label="Sacrifice 50% HP to Revive", style=discord.ButtonStyle.danger, emoji="👼", custom_id=f"shrine_{self.session_id}", row=0)
             btn_revive.callback = self.action_shrine
-            btn_leave = discord.ui.Button(label="Leave Shrine", style=discord.ButtonStyle.secondary, emoji="🚶", custom_id=f"leave_{self.session_id}", row=0)
+            
+            btn_bless = discord.ui.Button(label="Pray for Blessing (+10 Max HP & Heal 30%)", style=discord.ButtonStyle.success, emoji="✨", custom_id=f"bless_{self.session_id}", row=0)
+            btn_bless.callback = self.action_shrine_bless
+            
+            btn_leave = discord.ui.Button(label="Leave Shrine", style=discord.ButtonStyle.secondary, emoji="🚶", custom_id=f"leave_{self.session_id}", row=1)
             btn_leave.callback = self.action_leave_room
+            
             self.add_item(btn_revive)
+            self.add_item(btn_bless)
             self.add_item(btn_leave)
             
         elif self.state == "EVENT":
@@ -561,7 +574,7 @@ class RPGSession(discord.ui.View):
                 
             elif path['type'] == 'shrine':
                 self.state = "SHRINE"
-                self.log = "👼 The party finds a Holy Shrine. You may sacrifice 50% of your current HP to revive a fallen ally."
+                self.log = "👼 The party finds a Holy Shrine. You may sacrifice HP to revive an ally, or pray for a blessing."
                 
             elif path['type'] == 'event':
                 self.state = "EVENT"
@@ -595,6 +608,20 @@ class RPGSession(discord.ui.View):
             self.party[target_id]['hp'] = self.party[target_id]['max_hp'] // 2
             p['hp'] = p['hp'] // 2
             self.log = f"👼 {interaction.user.display_name} sacrificed half their HP to revive {self.party[target_id]['user'].display_name}!"
+            
+            self.state = "EXPLORE"
+            self.floor += 1
+            self.generate_paths()
+            await self.update_message(interaction)
+
+    async def action_shrine_bless(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        async with self.lock:
+            for uid, p in self.party.items():
+                if p['hp'] > 0:
+                    p['max_hp'] += 10
+                    p['hp'] = min(p['max_hp'], p['hp'] + int(p['max_hp'] * 0.3))
+            self.log = f"✨ {interaction.user.display_name} prayed to the Shrine. The party is blessed! (+10 Max HP, Healed 30%)"
             
             self.state = "EXPLORE"
             self.floor += 1
@@ -661,9 +688,15 @@ class RPGSession(discord.ui.View):
         async with self.lock:
             if self.state != "COMBAT" or self.enemy is None: return await self.update_message(interaction)
             
+            if self.enemy.get('boss'):
+                return await interaction.followup.send("❌ You cannot flee from a Boss!", ephemeral=True)
+            
             if random.random() < 0.5:
-                self.gold_earned //= 2
-                self.log = f"🏃 {interaction.user.display_name} yells 'RUN!' The party escapes, but drops half their gold..."
+                penalty = 150 
+                lost_gold = min(self.gold_earned, penalty)
+                self.gold_earned -= lost_gold
+                
+                self.log = f"🏃 {interaction.user.display_name} yells 'RUN!' The party escapes, but drops ${lost_gold} in the panic..."
                 self.combat_moves.clear()
                 self.floor += 1
                 self.generate_paths()
@@ -821,7 +854,12 @@ class RPGSession(discord.ui.View):
                     self.log += f"❄️ {p['user'].display_name} casts Frostbite for {dmg} DMG and froze the enemy for {self.status_duration} turn(s)!\n"
 
         if self.enemy['hp'] <= 0:
-            reward = int((random.randint(20, 50) + (self.floor * 5)) * len(self.party) + (self.enemy['max_hp'] * 0.6))
+            # STAT-BASED GOLD SCALING
+            stat_value = (self.enemy['max_hp'] * 0.8) + (self.enemy['atk'] * 4) + (self.enemy['def'] * 4)
+            reward = int(stat_value + (self.floor * 10))
+            if self.enemy.get('boss'):
+                reward = int(reward * 2.5) # Bosses drop massive gold!
+                
             if 'golden_idol' in self.relics:
                 reward = int(reward * 1.5)
             self.gold_earned += reward
