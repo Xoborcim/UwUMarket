@@ -790,19 +790,23 @@ class RPGSession(discord.ui.View):
                 elif 'dodge' in t_player['passives'] and random.random() < dodge_chance:
                     self.log += f"💨 {self.enemy['name']} attacks {t_player['user'].display_name}, but they DODGED!\n"
                 else:
-                    else:
-                        is_defending = self.combat_moves.get(target_id) == "defend"
-                        
-                        # THE NERF: Diminishing returns armor formula instead of flat subtraction
-                        # 50 DEF = 33% reduction. 100 DEF = 50% reduction.
+                    is_defending = self.combat_moves.get(target_id) == "defend"
+                    
+                    # THE FIX: Safely handle both positive and negative armor!
+                    if t_player['def'] >= 0:
+                        # Positive Defense: Diminishing damage reduction (50 DEF = ~33% reduction)
                         mitigation = 100 / (100 + t_player['def'])
-                        dmg = max(1, int(self.enemy['atk'] * mitigation) + random.randint(-2, 2))
+                    else:
+                        # Negative Defense (Cursed): Amplifies damage taken (-50 DEF = 1.5x damage taken)
+                        mitigation = 1 + (abs(t_player['def']) / 100)
                         
-                        # Defending still halves damage
-                        if is_defending: dmg = max(0, dmg // 2)
-                        
-                        t_player['hp'] -= dmg
-                        self.log += f"💥 {self.enemy['name']} hits {t_player['user'].display_name} for {dmg} DMG!\n"
+                    dmg = max(1, int(self.enemy['atk'] * mitigation) + random.randint(-2, 2))
+                    
+                    # Defending still halves damage
+                    if is_defending: dmg = max(0, dmg // 2)
+                    
+                    t_player['hp'] -= dmg
+                    self.log += f"💥 {self.enemy['name']} hits {t_player['user'].display_name} for {dmg} DMG!\n"
                     
                     if 'thorns' in t_player['passives'] and dmg > 0:
                         thorn_dmg = max(1, dmg // 3) 
