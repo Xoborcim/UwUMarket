@@ -5,6 +5,7 @@ import database as db
 import datetime
 import random
 import asyncio
+import aiosqlite
 
 # --- JOB DEFINITIONS ---
 JOBS = {
@@ -44,23 +45,27 @@ RECIPES = {
     "Excalibur": {"Diamond": 3, "Gold Ore": 3, "Iron Ore": 5}
 }
 
-def consume_materials(user_id, materials):
-    conn = db.get_connection()
-    try:
-        c = conn.cursor()
+# Added Async/Aiosqlite Support here!
+async def consume_materials(user_id, materials):
+    async with aiosqlite.connect(db.DB_NAME) as conn:
+        conn.row_factory = aiosqlite.Row
+        
+        # 1. Check if they have enough of everything first
         for item_name, count in materials.items():
-            items = c.execute("SELECT item_id FROM inventory WHERE user_id = ? AND item_name = ? AND is_listed = 0 LIMIT ?", (user_id, item_name, count)).fetchall()
+            async with conn.execute("SELECT item_id FROM inventory WHERE user_id = ? AND item_name = ? AND is_listed = 0 LIMIT ?", (user_id, item_name, count)) as cursor:
+                items = await cursor.fetchall()
             if len(items) < count:
                 return False, f"Missing materials. You need {count}x **{item_name}**."
                 
+        # 2. If they have enough, consume them
         for item_name, count in materials.items():
-            items = c.execute("SELECT item_id FROM inventory WHERE user_id = ? AND item_name = ? AND is_listed = 0 LIMIT ?", (user_id, item_name, count)).fetchall()
+            async with conn.execute("SELECT item_id FROM inventory WHERE user_id = ? AND item_name = ? AND is_listed = 0 LIMIT ?", (user_id, item_name, count)) as cursor:
+                items = await cursor.fetchall()
             for i in items:
-                c.execute("DELETE FROM inventory WHERE item_id = ?", (i['item_id'],))
-        conn.commit()
+                await conn.execute("DELETE FROM inventory WHERE item_id = ?", (i['item_id'],))
+                
+        await conn.commit()
         return True, "Success"
-    finally: 
-        conn.close()
 
 # --- EMOJI TOWN MAP GENERATOR ---
 def generate_town_map(level, famine):
@@ -122,7 +127,7 @@ def build_town_embed(t):
 # --- FORCE BOARD UPDATE LOGIC ---
 async def force_board_update(bot):
     """Instantly updates the live town board message."""
-    t = db.get_town_state()
+    t = await db.get_town_state() # Added Await!
     if not t or not t.get('board_channel_id') or not t.get('board_message_id'): return
     try:
         channel = bot.get_channel(t['board_channel_id']) or await bot.fetch_channel(t['board_channel_id'])
@@ -147,8 +152,8 @@ class FarmerGame(discord.ui.View):
         self.clear_items()
         
         food_yield = random.randint(15, 30)
-        db.add_town_resources(food=food_yield)
-        net, tax = db.process_work(self.user.id, self.base_pay)
+        await db.add_town_resources(food=food_yield) # Added Await!
+        net, tax = await db.process_work(self.user.id, self.base_pay) # Added Await!
         
         embed = discord.Embed(
             title="🌾 Bountiful Harvest", 
@@ -189,7 +194,7 @@ class MinerGame(discord.ui.View):
         if random.random() < self.risk:
             self.ended = True
             self.clear_items()
-            db.process_work(self.user.id, 0)
+            await db.process_work(self.user.id, 0) # Added Await!
             await interaction.response.edit_message(embed=self.get_embed("cavein"), view=self)
             self.stop()
         else:
@@ -211,18 +216,19 @@ class MinerGame(discord.ui.View):
         self.ended = True
         self.clear_items()
         
-        db.add_town_resources(materials=self.mats)
+        await db.add_town_resources(materials=self.mats) # Added Await!
         for item, count in self.inventory.items():
             for _ in range(count):
-                db.add_item(self.user.id, item, "Resource", "Materials")
+                await db.add_item(self.user.id, item, "Resource", "Materials") # Added Await!
                 
-        net, tax = db.process_work(self.user.id, self.base_pay) 
+        net, tax = await db.process_work(self.user.id, self.base_pay) # Added Await!
         
         embed = self.get_embed("left")
         embed.description += f"\n\n**Paycheck:** ${net:,.2f} *(Tax: ${tax:,.2f})*"
         await interaction.response.edit_message(embed=embed, view=self)
         await force_board_update(interaction.client) 
         self.stop()
+        
 class GuillotineVoteView(discord.ui.View):
     def __init__(self, target, initiator, bot):
         super().__init__(timeout=120) # 2 minutes to vote
@@ -243,10 +249,10 @@ class GuillotineVoteView(discord.ui.View):
         
         if len(self.votes) >= self.required_votes:
             self.stop()
-            seized = db.execute_player(self.target.id, 0.50) # 0.50 = 50% penalty
+            seized = await db.execute_player(self.target.id, 0.50) # Added Await!
             
             head_name = f"{self.target.display_name}'s Severed Head"
-            db.add_item(self.initiator.id, head_name, "Mythic", "Trophy")
+            await db.add_item(self.initiator.id, head_name, "Mythic", "Trophy") # Added Await!
             
             embed = discord.Embed(
                 title="🩸 PUBLIC EXECUTION 🩸", 
@@ -287,7 +293,7 @@ class ElectionVoteView(discord.ui.View):
 
         if len(self.votes) >= self.required_votes:
             self.stop()
-            db.set_job(self.candidate.id, "Politician")
+            await db.set_job(self.candidate.id, "Politician") # Added Await!
             embed = discord.Embed(
                 title="🏛️ ELECTION WON",
                 description=f"### The people have spoken!\n\n{self.candidate.mention} has been elected as **Politician**!\n\nThey now have the power to set taxes and access the treasury.",
@@ -344,10 +350,10 @@ class HackerGame(discord.ui.View):
             
             if word == self.target:
                 payout = random.randint(600, 1200)
-                net, tax = db.process_work(self.user.id, payout)
+                net, tax = await db.process_work(self.user.id, payout) # Added Await!
                 embed = discord.Embed(title="💻 Access Granted", description=f"Firewall bypassed! You stole **${net:,.2f}**.\n*(Laundered Tax: ${tax:,.2f})*", color=0x2ecc71)
             else:
-                db.process_work(self.user.id, 0)
+                await db.process_work(self.user.id, 0) # Added Await!
                 embed = discord.Embed(title="🚨 Access Denied", description="Incorrect key. You were locked out and traced!", color=0xe74c3c)
                 
             await interaction.response.edit_message(embed=embed, view=self)
@@ -357,7 +363,7 @@ class HackerGame(discord.ui.View):
         
     async def on_timeout(self):
         self.clear_items()
-        db.process_work(self.user.id, 0)
+        await db.process_work(self.user.id, 0) # Added Await!
         embed = discord.Embed(title="🚨 Timeout", description="You took too long. Security locked you out.", color=0xe74c3c)
         try: await self.message.edit(embed=embed, view=self)
         except: pass
@@ -379,7 +385,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
     async def town_upkeep_task(self):
         await self.bot.wait_until_ready()
         try:
-            ran_upkeep, is_famine, drain, tax_collected = db.run_town_daily_upkeep()
+            ran_upkeep, is_famine, drain, tax_collected = await db.run_town_daily_upkeep() # Added Await!
             
             if ran_upkeep:
                 # ⚠️ IMPORTANT: REPLACE THIS NUMBER WITH YOUR ANNOUNCEMENT CHANNEL ID!
@@ -402,22 +408,22 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
         if message.author.bot or len(message.content) < 5: return
         if random.random() < 0.50:
             amount = round(random.uniform(1.0, 3.0), 2)
-            db.process_chat_income(message.author.id, amount, daily_cap=250.0)
+            await db.process_chat_income(message.author.id, amount, daily_cap=250.0) # Added Await!
 
     # --- TOWN UI COMMANDS ---
     @app_commands.command(name="setup_board", description="Admin: Setup the live updating town board in this channel.")
     @app_commands.checks.has_permissions(administrator=True)
     async def setup_board(self, interaction: discord.Interaction):
-        t = db.get_town_state()
+        t = await db.get_town_state() # Added Await!
         embed = build_town_embed(t)
         await interaction.response.send_message("Initializing town board...", ephemeral=True)
         msg = await interaction.channel.send(embed=embed)
-        db.set_town_board(interaction.channel.id, msg.id)
+        await db.set_town_board(interaction.channel.id, msg.id) # Added Await!
         await interaction.followup.send("✅ Board setup complete! It will update automatically.", ephemeral=True)
 
     @app_commands.command(name="town", description="View the current status of the server's Town!")
     async def view_town(self, interaction: discord.Interaction):
-        t = db.get_town_state()
+        t = await db.get_town_state() # Added Await!
         embed = build_town_embed(t)
         await interaction.response.send_message(embed=embed)
 
@@ -440,13 +446,13 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
             return await interaction.response.send_message(
                 "🏛️ Politicians must be **elected**! Use `/career run_for_office` to start a campaign.",
                 ephemeral=True)
-        db.set_job(interaction.user.id, job_name)
+        await db.set_job(interaction.user.id, job_name) # Added Await!
         await interaction.response.send_message(f"🎉 Congratulations! You are now a **{job_name}**!\nUse `/career work` to start your shift.")
 
     @app_commands.command(name="run_for_office", description="Start a public election to become the town Politician.")
     @app_commands.checks.cooldown(1, 3600, key=lambda i: i.user.id)
     async def run_for_office(self, interaction: discord.Interaction):
-        profile = db.get_job_profile(interaction.user.id)
+        profile = await db.get_job_profile(interaction.user.id) # Added Await!
         if profile and profile['job'] == "Politician":
             interaction.command.reset_cooldown(interaction)
             return await interaction.response.send_message("❌ You are already a Politician!", ephemeral=True)
@@ -469,7 +475,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
 
     @app_commands.command(name="work", description="Go to work and earn your paycheck.")
     async def work(self, interaction: discord.Interaction):
-        profile = db.get_job_profile(interaction.user.id)
+        profile = await db.get_job_profile(interaction.user.id) # Added Await!
         current_job = profile['job'] if profile else "Unemployed"
         
         if current_job == "Unemployed" or current_job not in JOBS:
@@ -499,7 +505,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
             await interaction.response.send_message(embed=view.get_embed(), view=view)
             
         else: 
-            net, tax = db.process_work(interaction.user.id, job_data['payout'])
+            net, tax = await db.process_work(interaction.user.id, job_data['payout']) # Added Await!
             embed = discord.Embed(title="💼 Shift Complete", description=f"You worked hard as a {current_job} {job_data['emoji']}.\n\n**Paycheck:** ${net:,.2f}\n*(Taxes paid to town: ${tax:,.2f})*", color=0x2ecc71)
             await interaction.response.send_message(embed=embed)
             await force_board_update(self.bot) 
@@ -508,15 +514,15 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
 
     @app_commands.command(name="upgrade_town", description="[Builder] Spend Materials and Treasury money to level up the town!")
     async def upgrade(self, interaction: discord.Interaction):
-        profile = db.get_job_profile(interaction.user.id)
+        profile = await db.get_job_profile(interaction.user.id) # Added Await!
         if not profile or profile['job'] != "Builder":
             return await interaction.response.send_message("❌ Only **Builders** know how to construct town upgrades!", ephemeral=True)
             
-        t = db.get_town_state()
+        t = await db.get_town_state() # Added Await!
         mat_cost = t['level'] * 50
         gold_cost = t['level'] * 2000.0
         
-        if db.try_upgrade_town(mat_cost, gold_cost):
+        if await db.try_upgrade_town(mat_cost, gold_cost): # Added Await!
             embed = discord.Embed(
                 title="🏗️ Town Upgraded!", 
                 description=f"**{interaction.user.display_name}** just led a massive construction project!\n\nThe town is now **Level {t['level']+1}**!\nEveryone on the server now gets a permanent +{int((t['level']+1)*5)}% bonus to all paychecks!",
@@ -529,7 +535,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
 
     @app_commands.command(name="set_tax", description="[Politician] Set the town's income tax rate (0% to 15%).")
     async def set_tax(self, interaction: discord.Interaction, percentage: int):
-        profile = db.get_job_profile(interaction.user.id)
+        profile = await db.get_job_profile(interaction.user.id) # Added Await!
         if not profile or profile['job'] != "Politician":
             return await interaction.response.send_message("❌ Only **Politicians** can pass tax laws!", ephemeral=True)
             
@@ -537,14 +543,14 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
             return await interaction.response.send_message("❌ Tax rate must be between 0 and 15.", ephemeral=True)
             
         rate = percentage / 100.0
-        db.set_tax_rate(rate)
+        await db.set_tax_rate(rate) # Added Await!
         await interaction.response.send_message(f"🏛️ **New Legislation Passed:** {interaction.user.mention} has set the town tax rate to **{percentage}%**.")
         await force_board_update(self.bot) 
 
     @app_commands.command(name="embezzle", description="[Politician] Risk everything to steal from the town treasury.")
     @app_commands.checks.cooldown(1, 86400, key=lambda i: i.user.id) # 24 Hour Cooldown
     async def embezzle(self, interaction: discord.Interaction, amount: float):
-        profile = db.get_job_profile(interaction.user.id)
+        profile = await db.get_job_profile(interaction.user.id) # Added Await!
         if not profile or profile['job'] != "Politician":
             interaction.command.reset_cooldown(interaction)
             return await interaction.response.send_message("❌ Only corrupt **Politicians** have access to the treasury!", ephemeral=True)
@@ -553,20 +559,20 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
             interaction.command.reset_cooldown(interaction)
             return await interaction.response.send_message("❌ Invalid amount.", ephemeral=True)
             
-        t = db.get_town_state()
+        t = await db.get_town_state() # Added Await!
         if t['treasury'] < amount:
             interaction.command.reset_cooldown(interaction)
             return await interaction.response.send_message("❌ The town doesn't have that much money to steal.", ephemeral=True)
 
         if random.random() < 0.50:
-            db.embezzle_town_funds(interaction.user.id, amount)
+            await db.embezzle_town_funds(interaction.user.id, amount) # Added Await!
             await interaction.response.send_message(f"🤫 **Success.** You quietly slipped **${amount:,.2f}** from the treasury into your personal account.")
             await force_board_update(self.bot) 
         else:
-            db.set_job(interaction.user.id, "Unemployed")
-            user_bal = db.get_balance(interaction.user.id)
+            await db.set_job(interaction.user.id, "Unemployed") # Added Await!
+            user_bal = await db.get_balance(interaction.user.id) # Added Await!
             fine = user_bal * 0.50 
-            db.update_balance(interaction.user.id, -fine)
+            await db.update_balance(interaction.user.id, -fine) # Added Await!
             await interaction.response.send_message(f"🚨 **BUSTED!** The auditors caught you attempting to embezzle town funds. You have been fired, stripped of your office, and fined **${fine:,.2f}**.")
 
     async def craft_autocomplete(self, interaction: discord.Interaction, current: str):
@@ -601,7 +607,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
     @app_commands.command(name="craft", description="[Blacksmith] Craft RPG items out of ores to sell on the market.")
     @app_commands.autocomplete(recipe_name=craft_autocomplete)
     async def craft(self, interaction: discord.Interaction, recipe_name: str):
-        profile = db.get_job_profile(interaction.user.id)
+        profile = await db.get_job_profile(interaction.user.id) # Added Await!
         if not profile or profile['job'] != "Blacksmith":
             return await interaction.response.send_message("❌ Only **Blacksmiths** know how to forge weapons!", ephemeral=True)
             
@@ -609,10 +615,10 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
             return await interaction.response.send_message("❌ Unknown recipe.", ephemeral=True)
             
         materials = RECIPES[recipe_name]
-        success, msg = consume_materials(interaction.user.id, materials)
+        success, msg = await consume_materials(interaction.user.id, materials) # Added Await!
         
         if success:
-            db.add_item(interaction.user.id, recipe_name, "Gear", "RPG_Crafted")
+            await db.add_item(interaction.user.id, recipe_name, "Gear", "RPG_Crafted") # Added Await!
             await interaction.response.send_message(f"🔨 **Success!** You forged the **{recipe_name}**! It is now in your inventory.")
         else:
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
@@ -620,7 +626,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
     @app_commands.command(name="hack", description="[Hacker] Attempt to siphon funds from another player's bank account.")
     @app_commands.checks.cooldown(1, 43200, key=lambda i: i.user.id) 
     async def hack(self, interaction: discord.Interaction, target: discord.Member):
-        profile = db.get_job_profile(interaction.user.id)
+        profile = await db.get_job_profile(interaction.user.id) # Added Await!
         if not profile or profile['job'] != "Hacker":
             interaction.command.reset_cooldown(interaction)
             return await interaction.response.send_message("❌ Only **Hackers** have the software to do this!", ephemeral=True)
@@ -629,18 +635,18 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
             interaction.command.reset_cooldown(interaction)
             return await interaction.response.send_message("❌ Invalid target.", ephemeral=True)
 
-        target_bal = db.get_balance(target.id)
+        target_bal = await db.get_balance(target.id) # Added Await!
         if target_bal < 500:
             return await interaction.response.send_message("❌ Their firewall is garbage, but they are too poor to be worth hacking.", ephemeral=True)
             
         if random.random() < 0.60:
             stolen = round(target_bal * random.uniform(0.02, 0.05), 2)
-            db.update_balance(target.id, -stolen)
-            db.update_balance(interaction.user.id, stolen)
+            await db.update_balance(target.id, -stolen) # Added Await!
+            await db.update_balance(interaction.user.id, stolen) # Added Await!
             await interaction.response.send_message(f"💻 **Hack Successful!** You bypassed {target.mention}'s security and siphoned **${stolen:,.2f}** into your account!")
         else:
             fine = 300.0
-            db.update_balance(interaction.user.id, -fine)
+            await db.update_balance(interaction.user.id, -fine) # Added Await!
             await interaction.response.send_message(f"🚨 **Hack Traced!** {target.mention}'s security caught you. You were fined **${fine:,.2f}**.")
 
     @embezzle.error
