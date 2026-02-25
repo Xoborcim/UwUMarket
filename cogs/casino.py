@@ -64,7 +64,6 @@ class MultiplayerPokerGame(discord.ui.View):
         self.board = []
         self.hands = {p.id: [self.deck.pop(), self.deck.pop()] for p in party}
         
-        # Betting Variables
         self.stage = 0 
         self.turn_idx = 0
         self.current_bet = 0
@@ -134,9 +133,9 @@ class MultiplayerPokerGame(discord.ui.View):
     async def check_advance(self, interaction):
         if len(self.active_players) == 1:
             winner_id = self.active_players[0]
-            db.update_balance(winner_id, self.pot)
+            net, tax = db.process_town_payout(winner_id, self.pot)
             winner = next(p for p in self.players if p.id == winner_id)
-            self.log = f"Everyone else folded! {winner.display_name} wins **${self.pot:,.2f}**!"
+            self.log = f"Everyone else folded!\n{winner.display_name} wins **${net:,.2f}** (Town Tax: ${tax:,.2f})!"
             self.stage = 5
             self.build_ui()
             return await interaction.edit_original_response(embed=self.get_embed(), view=self)
@@ -161,7 +160,6 @@ class MultiplayerPokerGame(discord.ui.View):
                 self.board.append(self.deck.pop())
                 self.log = "**The River** is dealt!"
             elif self.stage == 4:
-                # SHOWDOWN!
                 best_score = (-1, [])
                 winner_id, hand_name = None, ""
 
@@ -170,9 +168,9 @@ class MultiplayerPokerGame(discord.ui.View):
                     if score > best_score:
                         best_score, winner_id, hand_name = score, uid, h_name
 
-                db.update_balance(winner_id, self.pot)
+                net, tax = db.process_town_payout(winner_id, self.pot)
                 winner = next(p for p in self.players if p.id == winner_id)
-                self.log = f"SHOWDOWN!\n{winner.display_name} wins **${self.pot:,.2f}** with a {hand_name}!"
+                self.log = f"SHOWDOWN!\n{winner.display_name} wins **${net:,.2f}** with a {hand_name}!\n(Town Tax: ${tax:,.2f})"
                 self.stage = 5
         else:
             self.turn_idx = (self.turn_idx + 1) % len(self.active_players)
@@ -282,7 +280,6 @@ class PokerLobby(discord.ui.View):
         await interaction.edit_original_response(embed=game.get_embed(), view=game)
         self.stop()
 
-
 # ==========================================
 #        ADVANCED BLACKJACK ENGINE
 # ==========================================
@@ -311,16 +308,15 @@ class AdvancedBlackjackGame(discord.ui.View):
         self.session_id = str(random.randint(1000, 9999))
         
         self.dealer_hand = [self.deck.pop(), self.deck.pop()]
-        
-        # We use lists to support Splitting into multiple hands!
         self.hands = [[self.deck.pop(), self.deck.pop()]]
         self.bets = [bet]
-        self.statuses = ["Playing"] # Playing, Won, Lost, Push, Blackjack
+        self.statuses = ["Playing"] 
+        self.net_payouts = [0.0]
+        self.taxes = [0.0]
         
         self.active_idx = 0
         self.game_over = False
 
-        # Instant Blackjack Check
         p_score = get_bj_score(self.hands[0])
         d_score = get_bj_score(self.dealer_hand)
         
@@ -328,10 +324,12 @@ class AdvancedBlackjackGame(discord.ui.View):
             self.game_over = True
             if d_score == 21:
                 self.statuses[0] = "Push"
-                db.update_balance(self.user.id, self.bets[0])
+                db.update_balance(self.user.id, self.bets[0]) # Refunds don't get taxed
             else:
                 self.statuses[0] = "Blackjack"
-                db.update_balance(self.user.id, self.bets[0] * 2.5) # 3:2 payout
+                net, tax = db.process_town_payout(self.user.id, self.bets[0] * 2.5) 
+                self.net_payouts[0] = net
+                self.taxes[0] = tax
                 
         self.update_buttons()
 
@@ -354,13 +352,11 @@ class AdvancedBlackjackGame(discord.ui.View):
 
         current_hand = self.hands[self.active_idx]
 
-        # DOUBLE DOWN (Only on first 2 cards of a hand)
         if len(current_hand) == 2:
             btn_double = discord.ui.Button(label="Double Down", style=discord.ButtonStyle.danger, custom_id=f"double_{self.session_id}")
             btn_double.callback = self.action_double
             self.add_item(btn_double)
 
-        # SPLIT (Only on 2 cards of exact same rank, max 4 splits to prevent spam)
         if len(current_hand) == 2 and len(self.hands) < 4:
             if current_hand[0][:-1] == current_hand[1][:-1]:
                 btn_split = discord.ui.Button(label="Split", style=discord.ButtonStyle.success, custom_id=f"split_{self.session_id}")
@@ -375,21 +371,21 @@ class AdvancedBlackjackGame(discord.ui.View):
 
         embed = discord.Embed(title="♠️ Blackjack", color=color)
         
-        # Dealer Hand
         if not self.game_over:
             embed.add_field(name="Dealer's Hand", value=f"{format_cards([self.dealer_hand[0]])} 🎴", inline=False)
         else:
             d_score = get_bj_score(self.dealer_hand)
             embed.add_field(name=f"Dealer's Hand ({d_score})", value=format_cards(self.dealer_hand), inline=False)
             
-        # Player Hands (Supports multiple splits!)
-        for i, (hand, bet, status) in enumerate(zip(self.hands, self.bets, self.statuses)):
+        for i, (hand, bet, status, net, tax) in enumerate(zip(self.hands, self.bets, self.statuses, self.net_payouts, self.taxes)):
             pointer = "👉 " if (i == self.active_idx and not self.game_over) else ""
             hand_name = f"{pointer}Hand {i+1} (${bet:,.2f}) [{get_bj_score(hand)}]"
             
             val = format_cards(hand)
             if status != "Playing": 
                 val += f"\n*{status}*"
+                if status in ["Won", "Blackjack"]:
+                    val += f"\nNet Win: **${net:,.2f}** *(Tax: ${tax:,.2f})*"
                 
             embed.add_field(name=hand_name, value=val, inline=True)
             
@@ -407,7 +403,6 @@ class AdvancedBlackjackGame(discord.ui.View):
         self.game_over = True
         self.clear_items()
         
-        # Dealer only hits if there is at least one hand that hasn't busted
         needs_dealer = any(s == "Playing" for s in self.statuses)
         if needs_dealer:
             while get_bj_score(self.dealer_hand) < 17:
@@ -416,19 +411,21 @@ class AdvancedBlackjackGame(discord.ui.View):
         d_score = get_bj_score(self.dealer_hand)
         
         for i in range(len(self.hands)):
-            if self.statuses[i] != "Playing": continue # Skip busted/BJ hands
+            if self.statuses[i] != "Playing": continue 
             
             p_score = get_bj_score(self.hands[i])
             if p_score > 21: 
                 self.statuses[i] = "Lost"
             elif d_score > 21 or p_score > d_score:
                 self.statuses[i] = "Won"
-                db.update_balance(self.user.id, self.bets[i] * 2)
+                net, tax = db.process_town_payout(self.user.id, self.bets[i] * 2)
+                self.net_payouts[i] = net
+                self.taxes[i] = tax
             elif p_score < d_score:
                 self.statuses[i] = "Lost"
             else:
                 self.statuses[i] = "Push"
-                db.update_balance(self.user.id, self.bets[i])
+                db.update_balance(self.user.id, self.bets[i]) # Refunds don't get taxed
                 
         self.stop()
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
@@ -455,24 +452,21 @@ class AdvancedBlackjackGame(discord.ui.View):
         if get_bj_score(self.hands[self.active_idx]) > 21:
             self.statuses[self.active_idx] = "Lost"
             
-        # Double Down forces a stand
         await self.advance_hand(interaction)
 
     async def action_split(self, interaction: discord.Interaction):
         if not db.update_balance(self.user.id, -self.initial_bet):
             return await interaction.response.send_message("❌ Insufficient funds to Split.", ephemeral=True)
             
-        # Separate the two identical cards
         card1 = self.hands[self.active_idx][0]
         card2 = self.hands[self.active_idx].pop()
-        
-        # Give Hand 1 a new second card
         self.hands[self.active_idx].append(self.deck.pop())
         
-        # Create Hand 2 with card2 and a new card
         self.hands.insert(self.active_idx + 1, [card2, self.deck.pop()])
         self.bets.insert(self.active_idx + 1, self.initial_bet)
         self.statuses.insert(self.active_idx + 1, "Playing")
+        self.net_payouts.insert(self.active_idx + 1, 0.0)
+        self.taxes.insert(self.active_idx + 1, 0.0)
         
         self.update_buttons()
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
@@ -510,10 +504,10 @@ class RouletteGameUI(discord.ui.View):
             dead_player = self.alive.pop(self.turn_idx)
             if len(self.alive) == 1:
                 winner = self.alive[0]
-                db.update_balance(winner.id, self.pot)
+                net, tax = db.process_town_payout(winner.id, self.pot)
                 embed = discord.Embed(
                     title="🔫 BANG!", 
-                    description=f"💀 **{dead_player.display_name}** was eliminated!\n\n🎉 **{winner.display_name}** is the last one standing and wins the **${self.pot:,.2f}** pot!", 
+                    description=f"💀 **{dead_player.display_name}** was eliminated!\n\n🎉 **{winner.display_name}** survives and wins **${net:,.2f}**!\n*(Town Tax: ${tax:,.2f})*", 
                     color=0x2ecc71
                 )
                 self.stop()
@@ -573,9 +567,8 @@ class RouletteLobbyUI(discord.ui.View):
         await interaction.edit_original_response(embed=game.get_embed(), view=game)
         self.stop()
 
-
 # ==========================================
-#          JADD'S BELLY SLAP ENGINE
+#          JAD'S BELLY SLAP ENGINE
 # ==========================================
 class BellySlapGame(discord.ui.View):
     def __init__(self, user, bet):
@@ -584,7 +577,6 @@ class BellySlapGame(discord.ui.View):
         self.bet = bet
         self.multiplier = 1.0
         self.slaps = 0
-        # Risk starts at 5% and increases by 7% per slap
         self.base_risk = 0.05 
         self.risk_increase = 0.07
         self.ended = False
@@ -592,33 +584,33 @@ class BellySlapGame(discord.ui.View):
     def get_current_risk(self):
         return min(0.95, self.base_risk + (self.slaps * self.risk_increase))
 
-    def get_embed(self, status="playing"):
+    def get_embed(self, status="playing", net=0.0, tax=0.0):
         risk_pct = int(self.get_current_risk() * 100)
         potential_win = self.bet * self.multiplier
 
         if status == "playing":
-            color = 0xe67e22 # Orange
+            color = 0xe67e22 
             title = "🫃 Slap Jad's Belly!"
             desc = ("Slap his belly to increase the multiplier!\n"
                     "But careful... every slap increases the chance he farts.")
         elif status == "won":
-            color = 0x2ecc71 # Green
+            color = 0x2ecc71 
             title = "🎉 Cashed Out!"
             desc = f"You slapped {self.slaps} times and walked away safely."
         elif status == "lost":
-            color = 0xe74c3c # Red
+            color = 0xe74c3c 
             title = "💨 Jad Farted! "
-            desc = "Oh no! Your money blended into the fart and mysteriously dissapeared!"
+            desc = "Oh no! Your money blended into the fart and mysteriously disappeared!"
 
         embed = discord.Embed(title=title, description=desc, color=color)
         embed.add_field(name="💵 Initial Bet", value=f"${self.bet:,.2f}", inline=True)
         embed.add_field(name="📈 Multiplier", value=f"**{self.multiplier:.2f}x**", inline=True)
         
         if status == "playing":
-             embed.add_field(name="💰 Potential Win", value=f"${potential_win:,.2f}", inline=True)
+             embed.add_field(name="💰 Potential Win", value=f"${potential_win:,.2f} *(Pre-Tax)*", inline=True)
              embed.add_field(name="⚠️ Fart Risk", value=f"{risk_pct}%", inline=True)
         elif status == "won":
-             embed.add_field(name="💰 Winnings", value=f"**${potential_win:,.2f}**", inline=True)
+             embed.add_field(name="💰 Net Winnings", value=f"**${net:,.2f}**\n*(Tax: ${tax:,.2f})*", inline=True)
         
         embed.set_footer(text=f"Player: {self.user.display_name}")
         return embed
@@ -631,15 +623,13 @@ class BellySlapGame(discord.ui.View):
         roll = random.random()
 
         if roll < current_risk:
-            # LOST
             self.ended = True
             self.clear_items()
             await interaction.response.edit_message(embed=self.get_embed(status="lost"), view=self)
             self.stop()
         else:
-            # SURVIVED
             self.slaps += 1
-            self.multiplier *= 1.15 # Multiplier compounds exponentially 
+            self.multiplier *= 1.15 
             await interaction.response.edit_message(embed=self.get_embed(status="playing"), view=self)
 
     @discord.ui.button(label="💰 Cash Out", style=discord.ButtonStyle.success)
@@ -651,10 +641,10 @@ class BellySlapGame(discord.ui.View):
 
         self.ended = True
         winnings = self.bet * self.multiplier
-        db.update_balance(self.user.id, winnings)
+        net, tax = db.process_town_payout(self.user.id, winnings)
         
         self.clear_items()
-        await interaction.response.edit_message(embed=self.get_embed(status="won"), view=self)
+        await interaction.response.edit_message(embed=self.get_embed(status="won", net=net, tax=tax), view=self)
         self.stop()
 
     async def on_timeout(self):
@@ -671,7 +661,6 @@ class MinesGame(discord.ui.View):
         self.user = user
         self.bet = bet
         self.mine_count = mine_count
-        # Discord only allows 5 rows of 5 buttons max. A 20-tile grid leaves room for the Cash Out button on the bottom row.
         self.total_tiles = 20 
         self.safe_count = self.total_tiles - mine_count
         self.revealed_safe = 0
@@ -685,7 +674,6 @@ class MinesGame(discord.ui.View):
         self.update_cashout_button()
 
     def calculate_next_multiplier(self):
-        # Calculate odds based on the board state BEFORE the click that just happened
         previous_revealed = self.revealed_safe
         remaining_tiles = self.total_tiles - previous_revealed
         remaining_safe = self.safe_count - previous_revealed
@@ -693,7 +681,7 @@ class MinesGame(discord.ui.View):
         if remaining_safe <= 0: return self.multiplier 
 
         odds = remaining_tiles / remaining_safe
-        new_mult = self.multiplier * (odds * 0.98) # 2% House Edge
+        new_mult = self.multiplier * (odds * 0.98) 
         return new_mult
 
     def create_grid(self):
@@ -706,14 +694,13 @@ class MinesGame(discord.ui.View):
     def update_cashout_button(self):
         cashout_btn = discord.utils.get(self.children, custom_id="cashout")
         if not cashout_btn:
-            # Placed cleanly on row 4
             cashout_btn = discord.ui.Button(style=discord.ButtonStyle.success, label="Cash Out", custom_id="cashout", row=4, disabled=True)
             cashout_btn.callback = self.cashout_callback
             self.add_item(cashout_btn)
         
         if self.revealed_safe > 0 and not self.ended:
             win_amt = self.bet * self.multiplier
-            cashout_btn.label = f"Cash Out: ${win_amt:,.2f}"
+            cashout_btn.label = f"Cash Out: ${win_amt:,.2f} (Pre-Tax)"
             cashout_btn.disabled = False
         else:
              cashout_btn.label = "Cash Out"
@@ -741,7 +728,6 @@ class MinesGame(discord.ui.View):
         clicked_button = [x for x in self.children if x.custom_id == btn_id][0]
 
         if self.grid[idx]:
-            # MINE HIT
             self.ended = True
             self.reveal_all(interaction)
             clicked_button.emoji = "💥"
@@ -751,8 +737,6 @@ class MinesGame(discord.ui.View):
             await interaction.response.edit_message(embed=embed, view=self)
             self.stop()
         else:
-            # SAFE TILE
-            # FIX: Calculate multiplier BEFORE incrementing revealed_safe so the math doesn't see 0 remaining safe tiles!
             self.multiplier = self.calculate_next_multiplier()
             self.revealed_safe += 1
             
@@ -763,13 +747,12 @@ class MinesGame(discord.ui.View):
             embed = interaction.message.embeds[0]
 
             if self.revealed_safe == self.safe_count:
-                # AUTO WIN - FOUND ALL GEMS
                 self.ended = True
                 self.reveal_all(interaction)
                 winnings = self.bet * self.multiplier
-                db.update_balance(self.user.id, winnings)
+                net, tax = db.process_town_payout(self.user.id, winnings)
                 embed.color = 0x2ecc71
-                embed.title = f"💎 PERFECT GAME! Won ${winnings:,.2f}!"
+                embed.title = f"💎 PERFECT GAME! Won ${net:,.2f} (Tax: ${tax:,.2f})!"
                 self.stop()
             else:
                 embed.description = f"**Current Multiplier: {self.multiplier:.2f}x**\nMines: {self.mine_count} | Gems left: {self.safe_count - self.revealed_safe}"
@@ -783,15 +766,14 @@ class MinesGame(discord.ui.View):
         
         self.ended = True
         winnings = self.bet * self.multiplier
-        db.update_balance(self.user.id, winnings)
+        net, tax = db.process_town_payout(self.user.id, winnings)
         
         self.reveal_all(interaction)
         embed = interaction.message.embeds[0]
         embed.color = 0x2ecc71
-        embed.title = f"💰 Cashed Out: ${winnings:,.2f}"
+        embed.title = f"💰 Cashed Out: ${net:,.2f} *(Tax: ${tax:,.2f})*"
         await interaction.response.edit_message(embed=embed, view=self)
         self.stop()
-
 
 # ==========================================
 #             THE CASINO COG
@@ -800,7 +782,6 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
     def __init__(self, bot):
         self.bot = bot
         
-        # ⚠️ IMPORTANT: REPLACE THIS NUMBER WITH YOUR DISCORD CHANNEL ID!
         self.announcement_channel_id = 123456789012345678 
         
         if not self.lottery_draw_task.is_running():
@@ -809,31 +790,22 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
     def cog_unload(self):
         self.lottery_draw_task.cancel()
 
-    # --- THE 24 HOUR BACKGROUND TASK ---
     @tasks.loop(hours=24)
     async def lottery_draw_task(self):
         await self.bot.wait_until_ready()
         
-        try:
-            res = db.draw_lottery_winner()
-            if isinstance(res, tuple):
-                winner_id, pot = res
-            else:
-                winner_id = res
-                pot = "the pot"
-        except TypeError:
-            try:
-                winner_id, pot = db.draw_lottery()
-            except:
-                winner_id = db.draw_lottery()
-                pot = "the pot"
+        res = db.draw_lottery_winner()
+        if res:
+            winner_id, pot = res
+        else:
+            winner_id, pot = None, 0
             
         if winner_id:
             channel = self.bot.get_channel(self.announcement_channel_id)
             if channel:
                 embed = discord.Embed(
                     title="🎟️ Daily Lottery Draw!", 
-                    description=f"🎉 Congratulations to <@{winner_id}>!\n\nThey just won **${pot if isinstance(pot, float) else pot}**!\nBuy your tickets for tomorrow's draw with `/casino buy_ticket`.", 
+                    description=f"🎉 Congratulations to <@{winner_id}>!\n\nThey just won **${pot:,.2f}** after Town Taxes!\nBuy your tickets for tomorrow's draw with `/casino buy_ticket`.", 
                     color=0xf1c40f
                 )
                 await channel.send(embed=embed)
@@ -841,7 +813,6 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
     @app_commands.command(name="buy_ticket", description="Buy a ticket for the Daily Lottery ($50)!")
     async def buy_ticket(self, interaction: discord.Interaction):
         success = db.buy_lottery_ticket(interaction.user.id)
-            
         if success:
             await interaction.response.send_message(f"🎟️ **Ticket Secured!** You are entered into the daily draw for $50.", ephemeral=True)
         else:
@@ -849,14 +820,12 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
 
     @app_commands.command(name="lottery_pool", description="Check how big the daily lottery pot has gotten!")
     async def lottery_pool(self, interaction: discord.Interaction):
-        try:
-            tickets, pot = db.get_lottery_stats()
-        except:
-            tickets, pot = 0, 0
+        try: tickets, pot = db.get_lottery_stats()
+        except: tickets, pot = 0, 0
 
         embed = discord.Embed(
             title="🎟️ Daily Lottery", 
-            description=f"**Current Pot:** ${pot:,.2f}\n**Total Tickets Sold:** {tickets}\n\n*Draws every 24 hours!*",
+            description=f"**Current Pot:** ${pot:,.2f} *(Pre-Tax)*\n**Total Tickets Sold:** {tickets}\n\n*Draws every 24 hours!*",
             color=0x3498db
         )
         await interaction.response.send_message(embed=embed)
@@ -870,8 +839,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         roll = random.randint(1, 100)
         if roll == 1:
             winnings = cost * 50
-            db.update_balance(interaction.user.id, winnings)
-            embed = discord.Embed(title="🎫 Lottery Results", description=f"🎉 **JACKPOT!** You scratched off a winning ticket and got **${winnings:,.2f}**!", color=0xf1c40f)
+            net, tax = db.process_town_payout(interaction.user.id, winnings)
+            embed = discord.Embed(title="🎫 Lottery Results", description=f"🎉 **JACKPOT!** You scratched off a winning ticket and got **${net:,.2f}**!\n*(Town Tax: ${tax:,.2f})*", color=0xf1c40f)
         else:
             embed = discord.Embed(title="🎫 Lottery Results", description="🗑️ *Scratch, scratch...* Nothing. Better luck next time.", color=0x95a5a6)
             
@@ -880,11 +849,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
     @app_commands.command(name="poker", description="Host a Multiplayer Texas Hold'em Table!")
     @app_commands.describe(ante="The required buy-in and raise amount.")
     async def poker(self, interaction: discord.Interaction, ante: float):
-        if ante < 10.0:
-            return await interaction.response.send_message("❌ Minimum Buy-in is $10.00.", ephemeral=True)
-            
-        if not db.update_balance(interaction.user.id, -ante):
-            return await interaction.response.send_message(f"❌ You don't have enough money for a ${ante:,.2f} Buy-in.", ephemeral=True)
+        if ante < 10.0: return await interaction.response.send_message("❌ Minimum Buy-in is $10.00.", ephemeral=True)
+        if not db.update_balance(interaction.user.id, -ante): return await interaction.response.send_message(f"❌ You don't have enough money.", ephemeral=True)
             
         embed = discord.Embed(
             title=f"🃏 Texas Hold'em Lobby (Pot: ${ante:,.2f})", 
@@ -895,23 +861,17 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
 
     @app_commands.command(name="blackjack", description="Play a hand of Blackjack against the dealer.")
     async def blackjack(self, interaction: discord.Interaction, bet: float):
-        if bet < 5.0:
-            return await interaction.response.send_message("❌ Minimum bet is $5.00.", ephemeral=True)
-            
-        if not db.update_balance(interaction.user.id, -bet):
-            return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
+        if bet < 5.0: return await interaction.response.send_message("❌ Minimum bet is $5.00.", ephemeral=True)
+        if not db.update_balance(interaction.user.id, -bet): return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
             
         game = AdvancedBlackjackGame(interaction.user, bet)
-        if game.game_over: 
-            game.clear_items()
+        if game.game_over: game.clear_items()
         await interaction.response.send_message(embed=game.get_embed(), view=game)
 
     @app_commands.command(name="slots", description="Spin the slot machine!")
     async def slots(self, interaction: discord.Interaction, bet: float):
-        if bet < 1.0:
-            return await interaction.response.send_message("❌ Minimum bet is $1.00.", ephemeral=True)
-        if not db.update_balance(interaction.user.id, -bet):
-            return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
+        if bet < 1.0: return await interaction.response.send_message("❌ Minimum bet is $1.00.", ephemeral=True)
+        if not db.update_balance(interaction.user.id, -bet): return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
 
         emojis = ["🍒", "🍋", "🍇", "🔔", "💎", "7️⃣"]
         result = [random.choice(emojis) for _ in range(3)]
@@ -920,14 +880,14 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         
         if result[0] == result[1] == result[2]:
             winnings = bet * 10
-            embed.description += f"**JACKPOT!** You won ${winnings:,.2f}!"
+            net, tax = db.process_town_payout(interaction.user.id, winnings)
+            embed.description += f"**JACKPOT!** You won ${net:,.2f} *(Tax: ${tax:,.2f})*!"
             embed.color = 0xf1c40f
-            db.update_balance(interaction.user.id, winnings)
         elif result[0] == result[1] or result[1] == result[2] or result[0] == result[2]:
             winnings = bet * 2
-            embed.description += f"**Small Win!** You got two matches and won ${winnings:,.2f}!"
+            net, tax = db.process_town_payout(interaction.user.id, winnings)
+            embed.description += f"**Small Win!** You got two matches and won ${net:,.2f} *(Tax: ${tax:,.2f})*!"
             embed.color = 0x2ecc71
-            db.update_balance(interaction.user.id, winnings)
         else:
             embed.description += "You lost. Better luck next time!"
             embed.color = 0xe74c3c
@@ -941,10 +901,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         app_commands.Choice(name="Green (14x Payout)", value="green")
     ])
     async def roulette(self, interaction: discord.Interaction, bet: float, choice: app_commands.Choice[str]):
-        if bet < 1.0:
-            return await interaction.response.send_message("❌ Minimum bet is $1.00.", ephemeral=True)
-        if not db.update_balance(interaction.user.id, -bet):
-            return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
+        if bet < 1.0: return await interaction.response.send_message("❌ Minimum bet is $1.00.", ephemeral=True)
+        if not db.update_balance(interaction.user.id, -bet): return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
 
         roll = random.randint(0, 36)
         if roll == 0: color = "green"
@@ -952,14 +910,13 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         else: color = "red"
         
         color_emoji = "🟩" if color == "green" else ("🟥" if color == "red" else "⬛")
-        
         embed = discord.Embed(title="🎡 Roulette", description=f"The ball landed on... **{roll} {color_emoji}**\n\n", color=0x3498db)
         
         if choice.value == color:
             multiplier = 14 if color == "green" else 2
             winnings = bet * multiplier
-            db.update_balance(interaction.user.id, winnings)
-            embed.description += f"🎉 **You won!** Payout: ${winnings:,.2f}"
+            net, tax = db.process_town_payout(interaction.user.id, winnings)
+            embed.description += f"🎉 **You won!** Payout: ${net:,.2f} *(Tax: ${tax:,.2f})*"
             embed.color = 0x2ecc71
         else:
             embed.description += f"❌ **You lost.** Your bet was on {choice.name}."
@@ -970,11 +927,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
     @app_commands.command(name="russian_roulette", description="Host a multiplayer game of Russian Roulette.")
     @app_commands.describe(bet="The buy-in amount to join the game.")
     async def russian_roulette(self, interaction: discord.Interaction, bet: float):
-        if bet < 5.0:
-            return await interaction.response.send_message("❌ Minimum buy-in is $5.00.", ephemeral=True)
-            
-        if not db.update_balance(interaction.user.id, -bet):
-            return await interaction.response.send_message(f"❌ You don't have enough money for a ${bet:,.2f} buy-in.", ephemeral=True)
+        if bet < 5.0: return await interaction.response.send_message("❌ Minimum buy-in is $5.00.", ephemeral=True)
+        if not db.update_balance(interaction.user.id, -bet): return await interaction.response.send_message(f"❌ You don't have enough money for a ${bet:,.2f} buy-in.", ephemeral=True)
             
         embed = discord.Embed(
             title=f"🔫 Russian Roulette Lobby (Pot: ${bet:,.2f})", 
@@ -983,42 +937,31 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         )
         await interaction.response.send_message(embed=embed, view=RouletteLobbyUI(interaction.user, bet))
 
-    # --- NEW: SLAP JADD'S BELLY ---
     @app_commands.command(name="slap", description="Push your luck by slapping Jad's belly. Don't make him fart!")
     @app_commands.describe(bet="Amount to bet")
     async def slap_game(self, interaction: discord.Interaction, bet: float):
-        if bet <= 0:
-            return await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
-        if not db.update_balance(interaction.user.id, -bet):
-            return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
+        if bet <= 0: return await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
+        if not db.update_balance(interaction.user.id, -bet): return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
         
         game_view = BellySlapGame(interaction.user, bet)
         embed = game_view.get_embed(status="playing")
-        
         await interaction.response.send_message(embed=embed, view=game_view)
         game_view.message = await interaction.original_response()
 
-    # --- NEW: MINES ---
     @app_commands.command(name="mines", description="Classic 20-tile minesweeper betting game.")
     @app_commands.describe(bet="Amount to bet", mines="Number of mines (1-19)")
     async def mines_game(self, interaction: discord.Interaction, bet: float, mines: int):
-        if bet <= 0:
-            return await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
-        if mines < 1 or mines > 19:
-            return await interaction.response.send_message("❌ Mines must be between 1 and 19 for a 20-tile grid.", ephemeral=True)
-
-        if not db.update_balance(interaction.user.id, -bet):
-            return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
+        if bet <= 0: return await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
+        if mines < 1 or mines > 19: return await interaction.response.send_message("❌ Mines must be between 1 and 19.", ephemeral=True)
+        if not db.update_balance(interaction.user.id, -bet): return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
 
         game_view = MinesGame(interaction.user, bet, mines)
-        
         embed = discord.Embed(
             title=f"💣 Mines ({mines})", 
             description=f"**Current Multiplier: 1.00x**\nMines: {mines} | Gems left: {20 - mines}", 
             color=0x3498db
         )
         embed.set_footer(text=f"Player: {interaction.user.display_name} | Bet: ${bet:,.2f}")
-
         await interaction.response.send_message(embed=embed, view=game_view)
 
 async def setup(bot):
