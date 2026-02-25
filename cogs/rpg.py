@@ -513,13 +513,18 @@ class RPGSession(discord.ui.View):
         return embed
 
     async def update_message(self, interaction: discord.Interaction):
-        self.build_ui()
         if self.state in ["ESCAPED", "WIPED"]:
             self.stop()
             for uid in self.party.keys(): active_runs.discard(uid)
-            
+
+            if self.state == "ESCAPED" and not getattr(self, '_gold_distributed', False):
+                self._gold_distributed = True
+                await self._distribute_gold()  # Credits accounts AND appends payout lines to self.log
+
             await db.log_rpg_run(self.floor, self.state, self.gold_earned, list(self.party.values()), killer=self.enemy['name'] if self.state == "WIPED" and self.enemy else None)
-            
+
+        self.build_ui()
+
         if interaction.message:
             self.message = interaction.message
             
@@ -528,7 +533,7 @@ class RPGSession(discord.ui.View):
                 await interaction.response.edit_message(embed=self.get_embed(), view=self)
             else:
                 await interaction.message.edit(embed=self.get_embed(), view=self)
-        except Exception as e:
+        except Exception:
             pass 
 
     async def action_inventory(self, interaction: discord.Interaction):
@@ -590,8 +595,20 @@ class RPGSession(discord.ui.View):
         await interaction.response.defer()
         async with self.lock:
             self.state = "ESCAPED"
-            self.log = f"🏃 The party escaped the dungeon with ${self.gold_earned:,.2f} in gold!\n\nFinal Floor: {self.floor}"
+            self.log = f"🏃 The party escaped the dungeon on Floor {self.floor}!\n💰 Total gold earned: **${self.gold_earned:,.2f}** — splitting between {len(self.party)} member(s)..."
             await self.update_message(interaction)
+
+    async def _distribute_gold(self):
+        """Split earned gold evenly among all party members and credit via town payout (applies tax/multiplier)."""
+        if self.gold_earned <= 0:
+            return
+        members = list(self.party.keys())
+        if not members:
+            return
+        share = round(self.gold_earned / len(members), 2)
+        for uid in members:
+            net, tax = await db.process_town_payout(uid, share)
+            self.log += f"\n💰 <@{uid}> received **${net:,.2f}** *(Tax: ${tax:,.2f})*"
 
     async def action_leave_room(self, interaction: discord.Interaction):
         await interaction.response.defer()
