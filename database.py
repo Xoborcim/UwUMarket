@@ -794,16 +794,51 @@ def get_rpg_analytics():
         max_floor = conn.execute("SELECT MAX(floor_reached) as m FROM rpg_analytics").fetchone()['m']
         total_gold = conn.execute("SELECT SUM(gold_earned) as s FROM rpg_analytics").fetchone()['s']
         
-        # Most common killer (Boss/Enemy that ends runs)
         killer = conn.execute("SELECT killer_enemy, COUNT(killer_enemy) as c FROM rpg_analytics WHERE killer_enemy IS NOT NULL GROUP BY killer_enemy ORDER BY c DESC LIMIT 1").fetchone()
         deadliest = f"{killer['killer_enemy']} ({killer['c']} kills)" if killer else "None"
-        
+
+        wins = conn.execute("SELECT COUNT(*) as c FROM rpg_analytics WHERE outcome = 'ESCAPED'").fetchone()['c']
+        wipes = conn.execute("SELECT COUNT(*) as c FROM rpg_analytics WHERE outcome = 'WIPED'").fetchone()['c']
+        avg_gold = conn.execute("SELECT AVG(gold_earned) as a FROM rpg_analytics").fetchone()['a']
+        avg_party = conn.execute("SELECT AVG(party_size) as a FROM rpg_analytics").fetchone()['a']
+
+        # Class popularity and performance
+        rows = conn.execute("SELECT party_classes, floor_reached, outcome, gold_earned FROM rpg_analytics").fetchall()
+        class_stats = {}
+        for r in rows:
+            classes = [c.strip() for c in r['party_classes'].split(",") if c.strip()]
+            for cls in classes:
+                if cls not in class_stats:
+                    class_stats[cls] = {"picks": 0, "wins": 0, "total_floor": 0, "total_gold": 0.0}
+                class_stats[cls]["picks"] += 1
+                class_stats[cls]["total_floor"] += r['floor_reached']
+                class_stats[cls]["total_gold"] += r['gold_earned']
+                if r['outcome'] == "ESCAPED":
+                    class_stats[cls]["wins"] += 1
+
+        for cls in class_stats:
+            s = class_stats[cls]
+            s["avg_floor"] = round(s["total_floor"] / s["picks"], 1)
+            s["avg_gold"] = round(s["total_gold"] / s["picks"], 1)
+            s["win_rate"] = round(s["wins"] / s["picks"] * 100, 1) if s["picks"] > 0 else 0
+
+        top5_killers = conn.execute(
+            "SELECT killer_enemy, COUNT(*) as c FROM rpg_analytics WHERE killer_enemy IS NOT NULL GROUP BY killer_enemy ORDER BY c DESC LIMIT 5"
+        ).fetchall()
+
         return {
             "total_runs": total_runs,
+            "wins": wins,
+            "wipes": wipes,
+            "win_rate": round(wins / total_runs * 100, 1) if total_runs > 0 else 0,
             "avg_floor": round(avg_floor, 1),
             "max_floor": max_floor,
             "total_gold": total_gold,
-            "deadliest": deadliest
+            "avg_gold": round(avg_gold, 1) if avg_gold else 0,
+            "avg_party": round(avg_party, 1) if avg_party else 0,
+            "deadliest": deadliest,
+            "top5_killers": [(k['killer_enemy'], k['c']) for k in top5_killers],
+            "class_stats": class_stats
         }
     finally: conn.close()
 

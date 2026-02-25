@@ -778,9 +778,59 @@ class MinesGame(discord.ui.View):
 # ==========================================
 #             THE CASINO COG
 # ==========================================
+def _get_casino_ad(user_id):
+    """Generate a personalized RPG-themed ad based on player data."""
+    gear_data, rpg_class = db.get_rpg_profile(user_id)
+    gear_list = [g.strip() for g in gear_data.split(",") if g.strip()] if gear_data else ["Rusty Dagger"]
+    bal = db.get_balance(user_id)
+
+    ads = []
+
+    if rpg_class == "Fighter":
+        ads.append("⚔️ **TIRED OF JUST HITTING THINGS?** Try Mage — we have spells AND a crippling lack of HP! `/rpg class`")
+    elif rpg_class == "Mage":
+        ads.append("🔮 **DYING TOO FAST?** Have you considered not being a Mage? Tank mains are accepting refugees. `/rpg class`")
+    elif rpg_class == "Cleric":
+        ads.append("🪄 **NOBODY APPRECIATES YOU.** We know. Heal them anyway. — The Cleric Support Group")
+    elif rpg_class == "Tank":
+        ads.append("🛡️ **YOU HAVE 150 HP AND ZERO FRIENDS.** Join a party! `/rpg dungeon`")
+    elif rpg_class == "Assassin":
+        ads.append("🥷 **DODGING RESPONSIBILITY?** That tracks. At least dodge enemy attacks in `/rpg dungeon`")
+    elif rpg_class == "Paladin":
+        ads.append("⚜️ **LAWFUL GOOD AND BROKE?** Even paladins need money. Maybe try `/career apply Hacker`... wait.")
+    elif rpg_class == "Berserker":
+        ads.append("🪓 **ANGER ISSUES?** Channel that rage into Floor 45. Your therapist would be proud. `/rpg dungeon`")
+    elif rpg_class == "Warlock":
+        ads.append("👿 **SOLD YOUR SOUL FOR +6 SPELL?** That's rough. At least buy some gear. `/rpg shop`")
+    elif rpg_class == "Cryomancer":
+        ads.append("❄️ **ICE COLD TAKES, ICE COLD DAMAGE.** Upgrade to Warlock for Hellfire. Or don't. We're not your mom.")
+    elif rpg_class == "Venomancer":
+        ads.append("🐍 **HISSSS.** Sorry, we don't speak Venomancer. Buy better gear and maybe we'll listen. `/rpg shop`")
+
+    if "Rusty Dagger" in gear_list and len(gear_list) == 1:
+        ads.append("🗡️ **STILL USING A RUSTY DAGGER?** In THIS economy? Visit `/rpg shop` before the mobs laugh at you.")
+    if len(gear_list) >= 5:
+        ads.append("🎒 **NICE GEAR COLLECTION!** You know what pairs well with gear? Actually using it. `/rpg dungeon`")
+
+    if bal < 100:
+        ads.append("💸 **BROKE ALERT!** Your bank account is sadder than a Mage's HP bar. Claim `/daily` or get a `/career`!")
+    elif bal > 50000:
+        ads.append("🤑 **SITTING ON $50K+?** That money isn't going to lose itself! Try `/casino blackjack`... oh wait, you're already here.")
+
+    ads.extend([
+        "📢 **DID YOU KNOW?** Berserkers have +15 ATK but -2 DEF. Just like your financial decisions right now.",
+        "📢 **PUBLIC SERVICE ANNOUNCEMENT:** Gambling is not a retirement plan. But `/casino slots` is pretty fun.",
+        "📢 **THIS AD SPACE FOR RENT.** Pay the town treasury. Or don't. We'll show them anyway.",
+        "📢 **TOUCH GRASS?** No. Touch `/rpg dungeon` instead.",
+        "📢 **FUN FACT:** The deadliest enemy in the dungeon has killed more players than you've won at blackjack.",
+    ])
+
+    return random.choice(ads)
+
 class Casino(commands.GroupCog, group_name="casino", group_description="Gamble your money away!"):
     def __init__(self, bot):
         self.bot = bot
+        self._game_counter = {}
         
         self.announcement_channel_id = 123456789012345678 
         
@@ -789,6 +839,23 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
 
     def cog_unload(self):
         self.lottery_draw_task.cancel()
+
+    def _check_ad(self, user_id):
+        """Returns an ad embed every 10 games, or None."""
+        self._game_counter[user_id] = self._game_counter.get(user_id, 0) + 1
+        if self._game_counter[user_id] % 10 == 0:
+            try:
+                ad_text = _get_casino_ad(user_id)
+                embed = discord.Embed(
+                    title="📺 SPONSORED CONTENT",
+                    description=ad_text,
+                    color=0xfee75c
+                )
+                embed.set_footer(text="UwUMarket Premium™ — Remove ads for $99,999 (just kidding)")
+                return embed
+            except Exception:
+                return None
+        return None
 
     @tasks.loop(hours=24)
     async def lottery_draw_task(self):
@@ -845,6 +912,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
             embed = discord.Embed(title="🎫 Lottery Results", description="🗑️ *Scratch, scratch...* Nothing. Better luck next time.", color=0x95a5a6)
             
         await interaction.response.send_message(embed=embed)
+        ad = self._check_ad(interaction.user.id)
+        if ad: await interaction.followup.send(embed=ad, ephemeral=True)
 
     @app_commands.command(name="poker", description="Host a Multiplayer Texas Hold'em Table!")
     @app_commands.describe(ante="The required buy-in and raise amount.")
@@ -858,6 +927,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
             color=0x3498db
         )
         await interaction.response.send_message(embed=embed, view=PokerLobby(interaction.user, ante))
+        ad = self._check_ad(interaction.user.id)
+        if ad: await interaction.followup.send(embed=ad, ephemeral=True)
 
     @app_commands.command(name="blackjack", description="Play a hand of Blackjack against the dealer.")
     async def blackjack(self, interaction: discord.Interaction, bet: float):
@@ -867,6 +938,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         game = AdvancedBlackjackGame(interaction.user, bet)
         if game.game_over: game.clear_items()
         await interaction.response.send_message(embed=game.get_embed(), view=game)
+        ad = self._check_ad(interaction.user.id)
+        if ad: await interaction.followup.send(embed=ad, ephemeral=True)
 
     @app_commands.command(name="slots", description="Spin the slot machine!")
     async def slots(self, interaction: discord.Interaction, bet: float):
@@ -893,6 +966,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
             embed.color = 0xe74c3c
             
         await interaction.response.send_message(embed=embed)
+        ad = self._check_ad(interaction.user.id)
+        if ad: await interaction.followup.send(embed=ad, ephemeral=True)
 
     @app_commands.command(name="roulette", description="Bet on a color (Red/Black) or Green!")
     @app_commands.choices(choice=[
@@ -923,6 +998,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
             embed.color = 0xe74c3c
 
         await interaction.response.send_message(embed=embed)
+        ad = self._check_ad(interaction.user.id)
+        if ad: await interaction.followup.send(embed=ad, ephemeral=True)
 
     @app_commands.command(name="russian_roulette", description="Host a multiplayer game of Russian Roulette.")
     @app_commands.describe(bet="The buy-in amount to join the game.")
@@ -936,6 +1013,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
             color=0xe74c3c
         )
         await interaction.response.send_message(embed=embed, view=RouletteLobbyUI(interaction.user, bet))
+        ad = self._check_ad(interaction.user.id)
+        if ad: await interaction.followup.send(embed=ad, ephemeral=True)
 
     @app_commands.command(name="slap", description="Push your luck by slapping Jad's belly. Don't make him fart!")
     @app_commands.describe(bet="Amount to bet")
@@ -947,6 +1026,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         embed = game_view.get_embed(status="playing")
         await interaction.response.send_message(embed=embed, view=game_view)
         game_view.message = await interaction.original_response()
+        ad = self._check_ad(interaction.user.id)
+        if ad: await interaction.followup.send(embed=ad, ephemeral=True)
 
     @app_commands.command(name="mines", description="Classic 20-tile minesweeper betting game.")
     @app_commands.describe(bet="Amount to bet", mines="Number of mines (1-19)")
@@ -963,6 +1044,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         )
         embed.set_footer(text=f"Player: {interaction.user.display_name} | Bet: ${bet:,.2f}")
         await interaction.response.send_message(embed=embed, view=game_view)
+        ad = self._check_ad(interaction.user.id)
+        if ad: await interaction.followup.send(embed=ad, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Casino(bot))

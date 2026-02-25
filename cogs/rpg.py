@@ -1127,14 +1127,57 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
         stats = db.get_rpg_analytics()
         if not stats:
             return await interaction.response.send_message("📊 No runs recorded yet.", ephemeral=True)
-            
-        embed = discord.Embed(title="📊 RPG Analytics", color=0x9b59b6)
-        embed.add_field(name="Runs Completed", value=str(stats['total_runs']), inline=True)
-        embed.add_field(name="Avg Floor", value=str(stats['avg_floor']), inline=True)
-        embed.add_field(name="Highest Floor", value=str(stats['max_floor']), inline=True)
-        embed.add_field(name="Total Gold Earned", value=f"${stats['total_gold']:,.2f}", inline=True)
-        embed.add_field(name="Deadliest Enemy", value=stats['deadliest'], inline=False)
-        
+
+        embed = discord.Embed(title="📊 RPG Analytics Dashboard", color=0x9b59b6)
+
+        overview = (
+            f"**Total Runs:** {stats['total_runs']}\n"
+            f"**Wins:** {stats['wins']} | **Wipes:** {stats['wipes']} | "
+            f"**Win Rate:** {stats['win_rate']}%\n"
+            f"**Avg Party Size:** {stats['avg_party']}"
+        )
+        embed.add_field(name="📋 Overview", value=overview, inline=False)
+
+        floors = (
+            f"**Average:** {stats['avg_floor']}\n"
+            f"**Highest Ever:** {stats['max_floor']}"
+        )
+        embed.add_field(name="🏔️ Floor Stats", value=floors, inline=True)
+
+        gold = (
+            f"**Total Earned:** ${stats['total_gold']:,.2f}\n"
+            f"**Avg Per Run:** ${stats['avg_gold']:,.2f}"
+        )
+        embed.add_field(name="💰 Gold Stats", value=gold, inline=True)
+
+        if stats.get('top5_killers'):
+            killers = "\n".join(
+                f"**{i+1}.** {name} ({count} kills)"
+                for i, (name, count) in enumerate(stats['top5_killers'])
+            )
+            embed.add_field(name="💀 Deadliest Enemies", value=killers, inline=False)
+
+        if stats.get('class_stats'):
+            class_emojis = {c: d['emoji'] for c, d in CLASSES.items()}
+            sorted_classes = sorted(
+                stats['class_stats'].items(),
+                key=lambda x: x[1]['picks'], reverse=True
+            )
+            lines = []
+            for cls_name, s in sorted_classes:
+                emoji = class_emojis.get(cls_name, "⚔️")
+                lines.append(
+                    f"{emoji} **{cls_name}** — {s['picks']} picks | "
+                    f"{s['win_rate']}% WR | "
+                    f"Avg Floor {s['avg_floor']} | "
+                    f"${s['avg_gold']:,.0f}/run"
+                )
+            embed.add_field(
+                name="🎭 Class Performance",
+                value="\n".join(lines) if lines else "No data",
+                inline=False
+            )
+
         await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
