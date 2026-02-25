@@ -696,15 +696,19 @@ class RPGSession(discord.ui.View):
             if self.state != "COMBAT" or self.enemy is None:
                 return await self.update_message(interaction)
             if interaction.user.id in self.combat_moves:
-                return await self.update_message(interaction) 
+                return await interaction.followup.send("❌ You already locked in your move!", ephemeral=True)
                 
             self.combat_moves[interaction.user.id] = move_type
             
             alive = self.get_alive_players()
             if len(self.combat_moves) >= len(alive):
+                # Everyone locked in! Resolve the round and edit the main message ONCE.
                 await self.resolve_round(interaction)
             else:
-                await self.update_message(interaction)
+                # Not everyone has locked in yet. DO NOT edit the main message!
+                # Send a quiet, invisible confirmation to the player to avoid Discord Rate Limits.
+                move_name = move_type.split('_')[1].title() if "spell_" in move_type else move_type.title()
+                await interaction.followup.send(f"✅ {move_name} locked in! Waiting for your party...", ephemeral=True)
 
     async def action_attack(self, interaction: discord.Interaction):
         await interaction.response.defer()
