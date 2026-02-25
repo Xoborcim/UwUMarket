@@ -463,7 +463,8 @@ class Tournament(commands.GroupCog, group_name="tournament", group_description="
         prize = t_data['prize']
         game_name = t_data['name']
         
-        db.update_balance(winner_id, prize)
+        # Added Await!
+        await db.update_balance(winner_id, prize)
         del self.tournaments[interaction.guild_id]
         
         embed = discord.Embed(
