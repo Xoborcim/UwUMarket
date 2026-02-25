@@ -1,7 +1,6 @@
 # --- Security & Database ---
 .env
 market.db
-
 # --- Environments & Dependencies ---
 venv/
 env/
