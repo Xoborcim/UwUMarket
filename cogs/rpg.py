@@ -755,7 +755,19 @@ class RPGSession(discord.ui.View):
             else:
                 self.log = f"🚫 {interaction.user.display_name} tries to flee, but the {self.enemy['name']} blocks the path!\n"
                 self.combat_moves.clear()
+                
+                # Let the enemy attack because the flee failed
                 await self._enemy_attack_phase()
+                
+                # BUG FIX: Did the enemy die to Thorns while attacking us?
+                if self.enemy['hp'] <= 0:
+                    return await self._process_enemy_death(interaction)
+
+                # BUG FIX: Did the enemy kill us while we tried to flee?
+                if len(self.get_alive_players()) == 0:
+                    self.state = "WIPED"
+                    self.log += "\n\n💀 THE PARTY WAS WIPED OUT. All gold lost."
+
             await self.update_message(interaction)
 
     async def _enemy_attack_phase(self):
@@ -819,6 +831,43 @@ class RPGSession(discord.ui.View):
                     t_player['status_dur'] = 2
                     self.log += f" They were {self.enemy['effect']}ed!\n"
 
+    async def _process_enemy_death(self, interaction):
+        """Helper function to handle enemy death, gold, and XP drops."""
+        stat_value = (self.enemy['max_hp'] * 0.8) + (self.enemy['atk'] * 4) + (self.enemy['def'] * 4)
+        reward = int(stat_value + (self.floor * 10))
+        if self.enemy.get('boss'):
+            reward = int(reward * 2.5) # Bosses drop massive gold!
+            
+        if 'golden_idol' in self.relics:
+            reward = int(reward * 1.5)
+        self.gold_earned += reward
+        self.log += f"\n💥 ENEMY DEFEATED! Party found ${reward}!\n"
+
+        base_xp = random.randint(15, 25) + (self.floor * 4)
+        xp_yield = base_xp * 2 if self.enemy.get('boss') else base_xp
+
+        for uid in self.get_alive_players():
+            p = self.party[uid]
+            p['xp'] += xp_yield
+            self.log += f"✨ {p['user'].display_name} gained {xp_yield} XP.\n"
+            
+            while p['xp'] >= p['max_xp']:
+                p['xp'] -= p['max_xp']
+                p['level'] += 1
+                p['max_xp'] = int(p['max_xp'] * 1.5) 
+                p['pending_level'] = p.get('pending_level', 0) + 1
+                self.log += f"🌟 **LEVEL UP!** {p['user'].display_name} reached Lvl {p['level']}!\n"
+
+        self.floor += 1
+        self.generate_paths()
+        self.state = "EXPLORE"
+        self.enemy = None
+        self.enemy_status = None
+        for p in self.party.values(): p['status'] = None 
+        self.combat_moves.clear()
+        
+        return await self.update_message(interaction)
+
     async def resolve_round(self, interaction):
         self.log = "-- COMBAT ROUND --\n"
         alive_players = self.get_alive_players()
@@ -866,7 +915,6 @@ class RPGSession(discord.ui.View):
                     self.log += f"🦇 Vampire Fangs heal {p['user'].display_name} for {heal} HP!\n"
                 
             elif move == "defend":
-                # THE NERF: Defend now heals for exactly 10% of Max HP, preventing infinite DEF scaling
                 heal = max(5, int(p['max_hp'] * 0.10))
                 p['hp'] = min(p['max_hp'], p['hp'] + heal)
                 self.log += f"🛡️ {p['user'].display_name} defends and heals {heal} HP.\n"
@@ -910,128 +958,24 @@ class RPGSession(discord.ui.View):
                     self.status_duration = 1 + (p['intelligence'] // 4)
                     self.log += f"❄️ {p['user'].display_name} casts Frostbite for {dmg} DMG and froze the enemy for {self.status_duration} turn(s)!\n"
 
+        # Did the players kill the enemy?
         if self.enemy['hp'] <= 0:
-            # STAT-BASED GOLD SCALING
-            stat_value = (self.enemy['max_hp'] * 0.8) + (self.enemy['atk'] * 4) + (self.enemy['def'] * 4)
-            reward = int(stat_value + (self.floor * 10))
-            if self.enemy.get('boss'):
-                reward = int(reward * 2.5) # Bosses drop massive gold!
-                
-            if 'golden_idol' in self.relics:
-                reward = int(reward * 1.5)
-            self.gold_earned += reward
-            self.log += f"\n💥 ENEMY DEFEATED! Party found ${reward}!\n"
+            return await self._process_enemy_death(interaction)
 
-            base_xp = random.randint(15, 25) + (self.floor * 4)
-            xp_yield = base_xp * 2 if self.enemy.get('boss') else base_xp
-
-            for uid in alive_players:
-                p = self.party[uid]
-                p['xp'] += xp_yield
-                self.log += f"✨ {p['user'].display_name} gained {xp_yield} XP.\n"
-                
-                while p['xp'] >= p['max_xp']:
-                    p['xp'] -= p['max_xp']
-                    p['level'] += 1
-                    p['max_xp'] = int(p['max_xp'] * 1.5) 
-                    p['pending_level'] = p.get('pending_level', 0) + 1
-                    self.log += f"🌟 **LEVEL UP!** {p['user'].display_name} reached Lvl {p['level']}! (Use the Level Up button to pick stats!)\n"
-
-            self.floor += 1
-            self.generate_paths()
-            self.state = "EXPLORE"
-            self.enemy = None
-            self.enemy_status = None
-            for p in self.party.values(): p['status'] = None 
-            self.combat_moves.clear()
-            return await self.update_message(interaction)
-
+        # The enemy attacks!
         await self._enemy_attack_phase()
 
+        # BUG FIX: Did the enemy die to Thorns?
+        if self.enemy['hp'] <= 0:
+            return await self._process_enemy_death(interaction)
+
+        # BUG FIX: Did the enemy wipe the party?
         if len(self.get_alive_players()) == 0:
             self.state = "WIPED"
             self.log += "\n\n💀 THE PARTY WAS WIPED OUT. All gold lost."
             
         self.combat_moves.clear()
         await self.update_message(interaction)
-
-    async def action_take_treasure(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        async with self.lock:
-            if self.state != "TREASURE" or not self.treasure: 
-                self.state = "EXPLORE"
-                return await self.update_message(interaction)
-                
-            p = self.party[interaction.user.id]
-            t = self.treasure
-            t_type = t.get('type')
-            t_name = t.get('name')
-            
-            if random.random() < 0.15 and t_type not in ['gold', 'relic']:
-                self.state = "COMBAT"
-                self.enemy = {
-                    "name": "Mimic", "emoji": "📦", 
-                    "max_hp": 50 * len(self.party), 
-                    "hp": 50 * len(self.party), 
-                    "atk": 10 + self.floor, 
-                    "def": 2 + (self.floor // 2), 
-                    "chance": 0, "boss": False
-                }
-                self.log = f"⚠️ THE CHEST WAS A MIMIC! It bites {interaction.user.display_name}!\n"
-                self.treasure = None
-                self.combat_moves.clear()
-                return await self.update_message(interaction)
-            
-            if t_type == 'gold': 
-                self.gold_earned += t.get('val', 0)
-                self.log = f"💰 {interaction.user.display_name} grabbed the {t.get('name', 'gold')}!"
-            elif t_type == 'relic':
-                self.relics.append(t['effect'])
-                self.log = f"🏛️ {interaction.user.display_name} claimed the Relic: {t_name}! The whole party is buffed!"
-            elif t_type == 'spell' and t.get('effect') in p['active_spells']: 
-                self.log = f"🎒 {interaction.user.display_name} studies the {t_name}. (+1 INT)"
-                p['intelligence'] += 1
-            else:
-                if len(p['inventory']) >= 5:
-                    return await interaction.followup.send("❌ Your backpack is full! You can only carry 5 items.", ephemeral=True)
-                p['inventory'].append(t)
-                self.log = f"🎒 {interaction.user.display_name} pocketed the {t_name}!"
-                
-            self.floor += 1
-            self.generate_paths()
-            self.state = "EXPLORE"
-            self.treasure = None
-            await self.update_message(interaction)
-
-    async def action_ignore_treasure(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        async with self.lock:
-            if self.state != "TREASURE": return await self.update_message(interaction)
-            self.log = "The party leaves the item behind."
-            self.floor += 1
-            self.generate_paths()
-            self.state = "EXPLORE"
-            self.treasure = None
-            await self.update_message(interaction)
-
-    async def action_escape(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        async with self.lock:
-            if self.state not in ["EXPLORE", "TREASURE"]: return await self.update_message(interaction)
-            
-            self.state = "ESCAPED"
-            split = self.gold_earned / len(self.party)
-            self.log = f"The party escaped!"
-            
-            if self.gold_earned > 0:
-                for uid in self.party.keys():
-                    # Added Await for Async DB Fix!
-                    net, tax = await db.process_town_payout(uid, split)
-                self.log += f" Everyone gets ${net:,.2f} after Town Taxes!"
-            else:
-                self.log += " The party leaves empty-handed."
-                    
-            await self.update_message(interaction)
 
 # --- RPG SHOP UI ---
 class RPGShopDropdown(discord.ui.Select):
