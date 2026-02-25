@@ -791,18 +791,18 @@ class RPGSession(discord.ui.View):
                     self.log += f"💨 {self.enemy['name']} attacks {t_player['user'].display_name}, but they DODGED!\n"
                 else:
                     else:
-                    is_defending = self.combat_moves.get(target_id) == "defend"
-                    
-                    # THE NERF: Diminishing returns armor formula instead of flat subtraction
-                    # 50 DEF = 33% reduction. 100 DEF = 50% reduction.
-                    mitigation = 100 / (100 + t_player['def'])
-                    dmg = max(1, int(self.enemy['atk'] * mitigation) + random.randint(-2, 2))
-                    
-                    # Defending still halves damage
-                    if is_defending: dmg = max(0, dmg // 2)
-                    
-                    t_player['hp'] -= dmg
-                    self.log += f"💥 {self.enemy['name']} hits {t_player['user'].display_name} for {dmg} DMG!\n"
+                        is_defending = self.combat_moves.get(target_id) == "defend"
+                        
+                        # THE NERF: Diminishing returns armor formula instead of flat subtraction
+                        # 50 DEF = 33% reduction. 100 DEF = 50% reduction.
+                        mitigation = 100 / (100 + t_player['def'])
+                        dmg = max(1, int(self.enemy['atk'] * mitigation) + random.randint(-2, 2))
+                        
+                        # Defending still halves damage
+                        if is_defending: dmg = max(0, dmg // 2)
+                        
+                        t_player['hp'] -= dmg
+                        self.log += f"💥 {self.enemy['name']} hits {t_player['user'].display_name} for {dmg} DMG!\n"
                     
                     if 'thorns' in t_player['passives'] and dmg > 0:
                         thorn_dmg = max(1, dmg // 3) 
