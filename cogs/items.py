@@ -4,6 +4,7 @@ from discord.ext import commands
 import database as db
 import random
 import os
+import aiosqlite
 
 TIER_WEIGHTS = {
     "Common": 50, "Uncommon": 25, "Rare": 15, 
@@ -60,7 +61,8 @@ class SellItemModal(discord.ui.Modal, title="Sell an Item"):
         except ValueError:
             return await interaction.response.send_message("❌ Please enter valid numbers.", ephemeral=True)
             
-        success, msg = db.list_item_on_market(interaction.user.id, i_id, p)
+        # Added Await!
+        success, msg = await db.list_item_on_market(interaction.user.id, i_id, p)
         if success:
             await interaction.response.send_message(f"✅ **Market Listing Created!** Item #{i_id} is now for sale for **${p:,.2f}**.", ephemeral=True)
         else:
@@ -117,7 +119,8 @@ class MarketGalleryUI(discord.ui.View):
     @discord.ui.button(label="Buy Item", style=discord.ButtonStyle.primary, emoji="🛒", row=0)
     async def buy_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         item = self.listings[self.index]
-        success, msg = db.buy_market_item(interaction.user.id, item['item_id'])
+        # Added Await!
+        success, msg = await db.buy_market_item(interaction.user.id, item['item_id'])
         
         if success:
             self.listings.pop(self.index)
@@ -157,7 +160,8 @@ class MarketGalleryUI(discord.ui.View):
 
     @discord.ui.button(label="Check Inventory", style=discord.ButtonStyle.secondary, emoji="🎒", row=1)
     async def inv_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        items = db.get_inventory(interaction.user.id)
+        # Added Await!
+        items = await db.get_inventory(interaction.user.id)
         if not items: return await interaction.response.send_message("🎒 Your inventory is empty.", ephemeral=True)
         embed = discord.Embed(title="🎒 Your Inventory", color=0x2c3e50)
         desc = "Find the ID of the item you want to sell.\n\n"
@@ -204,7 +208,8 @@ class Items(commands.Cog):
             return await interaction.response.send_message(f"❌ The set **{set_name}** has no .png images inside it! Add some first.", ephemeral=True)
 
         cost = 500.0
-        if not db.update_balance(interaction.user.id, -cost):
+        # Added Await!
+        if not await db.update_balance(interaction.user.id, -cost):
             return await interaction.response.send_message("❌ Insufficient funds ($500 needed).", ephemeral=True)
         
         valid_weights = [TIER_WEIGHTS[t] for t in valid_tiers]
@@ -212,7 +217,8 @@ class Items(commands.Cog):
         
         item_name, filepath = self.get_random_item(set_name, rolled_tier)
         
-        db.add_item(interaction.user.id, item_name, rolled_tier, set_name)
+        # Added Await!
+        await db.add_item(interaction.user.id, item_name, rolled_tier, set_name)
         
         embed = discord.Embed(title=f"🎁 {set_name.replace('_', ' ')} Lootbox!", description=f"You unboxed a **{rolled_tier}** item:\n### {item_name}", color=TIER_COLORS[rolled_tier])
         file = discord.File(filepath, filename="item.png")
@@ -221,12 +227,14 @@ class Items(commands.Cog):
 
     @app_commands.command(name="scrap", description="Dismantle an unwanted item for cash.")
     async def scrap(self, interaction: discord.Interaction, item_id: int):
-        item = db.get_item_by_id(item_id)
+        # Added Await!
+        item = await db.get_item_by_id(item_id)
         if not item or item['user_id'] != interaction.user.id:
             return await interaction.response.send_message("❌ You don't own this item.", ephemeral=True)
             
         scrap_value = SCRAP_VALUES.get(item['tier'], 5.0)
-        success, msg = db.scrap_item(interaction.user.id, item_id, scrap_value)
+        # Added Await!
+        success, msg = await db.scrap_item(interaction.user.id, item_id, scrap_value)
         
         if success: await interaction.response.send_message(f"♻️ {msg}")
         else: await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
@@ -248,11 +256,12 @@ class Items(commands.Cog):
                 
         if total_items == 0: return await interaction.response.send_message("❌ This set has no items yet.", ephemeral=True)
         
-        conn = db.get_connection()
-        try:
-            owned = conn.execute("SELECT DISTINCT item_name FROM inventory WHERE user_id = ? AND set_name = ?", (interaction.user.id, set_name)).fetchall()
-            owned_names = [row['item_name'] for row in owned]
-        finally: conn.close()
+        # FIX: Replaced raw synchronous SQLite call with proper aiosqlite block
+        async with aiosqlite.connect(db.DB_NAME) as conn:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute("SELECT DISTINCT item_name FROM inventory WHERE user_id = ? AND set_name = ?", (interaction.user.id, set_name)) as cursor:
+                owned = await cursor.fetchall()
+                owned_names = [row['item_name'] for row in owned]
         
         owned_count = len([i for i in owned_names if i in all_items])
         percentage = (owned_count / total_items) * 100
@@ -265,18 +274,22 @@ class Items(commands.Cog):
         embed.add_field(name="Progress", value=f"`{bar}` {percentage:.1f}%")
         
         await interaction.response.send_message(embed=embed)
+
     @app_commands.command(name="delist", description="Remove one of your items from the P2P market.")
     @app_commands.describe(item_id="The ID of the item you want to remove from the market")
     async def delist_item(self, interaction: discord.Interaction, item_id: int):
-        success, msg = db.delist_market_item(interaction.user.id, item_id)
+        # Added Await!
+        success, msg = await db.delist_market_item(interaction.user.id, item_id)
         
         if success:
             await interaction.response.send_message(f"✅ {msg}", ephemeral=True)
         else:
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+
     @app_commands.command(name="inventory", description="View your items.")
     async def inventory(self, interaction: discord.Interaction):
-        items = db.get_inventory(interaction.user.id)
+        # Added Await!
+        items = await db.get_inventory(interaction.user.id)
         if not items: return await interaction.response.send_message("🎒 Your inventory is empty.", ephemeral=True)
         embed = discord.Embed(title="🎒 Your Inventory", color=0x2c3e50)
         desc = "Use `/view_item [ID]` to see the image, or `/market` to sell it.\n\n"
@@ -286,7 +299,8 @@ class Items(commands.Cog):
 
     @app_commands.command(name="view_item", description="Look at an item you own.")
     async def view_item(self, interaction: discord.Interaction, item_id: int):
-        item = db.get_item_by_id(item_id)
+        # Added Await!
+        item = await db.get_item_by_id(item_id)
         
         # 1. Check Ownership
         if not item or item['user_id'] != interaction.user.id: 
@@ -309,7 +323,8 @@ class Items(commands.Cog):
     # --- THE NEW INTERACTIVE GALLERY MARKET ---
     @app_commands.command(name="market", description="The Player-to-Player Trading Hub.")
     async def market(self, interaction: discord.Interaction):
-        listings = db.get_market_listings()
+        # Added Await!
+        listings = await db.get_market_listings()
         
         if not listings:
             embed = discord.Embed(title="🛒 Player Market", description="**The market is currently empty.**\n\nClick below to list your own items.", color=0xf39c12)
