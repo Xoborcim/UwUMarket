@@ -249,8 +249,6 @@ class RPGLevelUpView(discord.ui.View):
             p['pending_level'] -= 1
             lvl = p['level']
             
-            # THE BUFF: Stats now scale up the higher level you are!
-            # Also, leveling up automatically heals you for 50% of your Max HP!
             heal_amount = p['max_hp'] // 2
             p['hp'] = min(p['max_hp'], p['hp'] + heal_amount)
             
@@ -346,8 +344,6 @@ class RPGSession(discord.ui.View):
     def generate_paths(self):
         self.paths = []
         
-        # EASY EARLY GAME, HARD LATE GAME SCALING
-        # Floor 1: ~0.85x | Floor 10: ~1.5x | Floor 20: ~2.6x | Floor 30: ~4.1x
         multiplier = 0.8 + (self.floor * 0.05) + ((self.floor ** 2) * 0.002)
         
         if self.floor > 0 and self.floor % 10 == 0:
@@ -431,7 +427,6 @@ class RPGSession(discord.ui.View):
             self.add_item(btn_defend)
             self.add_item(btn_spell)
             
-            # --- BOSS FLEE LOCK ---
             btn_flee = discord.ui.Button(label="Flee (-$150)", style=discord.ButtonStyle.secondary, emoji="🏃", custom_id=f"flee_{self.session_id}", row=1)
             if self.enemy and self.enemy.get('boss'):
                 btn_flee.disabled = True
@@ -523,7 +518,6 @@ class RPGSession(discord.ui.View):
             self.stop()
             for uid in self.party.keys(): active_runs.discard(uid)
             
-            # STAT TRACKING (Added Await!)
             await db.log_rpg_run(self.floor, self.state, self.gold_earned, list(self.party.values()), killer=self.enemy['name'] if self.state == "WIPED" and self.enemy else None)
             
         if interaction.message:
@@ -592,6 +586,13 @@ class RPGSession(discord.ui.View):
             self.combat_moves.clear()
             await self.update_message(interaction)
 
+    async def action_escape(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        async with self.lock:
+            self.state = "ESCAPED"
+            self.log = f"🏃 The party escaped the dungeon with ${self.gold_earned:,.2f} in gold!\n\nFinal Floor: {self.floor}"
+            await self.update_message(interaction)
+
     async def action_leave_room(self, interaction: discord.Interaction):
         await interaction.response.defer()
         async with self.lock:
@@ -642,10 +643,8 @@ class RPGSession(discord.ui.View):
         async with self.lock:
             p = self.party[interaction.user.id]
             
-            # 1. Pick a random stat
             stat_choice = random.choice(["max_hp", "atk", "def", "intelligence"])
             
-            # 2. Calculate a scaling magnitude based on the current floor
             if stat_choice == "max_hp":
                 magnitude = random.randint(15, 30) + self.floor
                 stat_name = "Max HP"
@@ -663,24 +662,20 @@ class RPGSession(discord.ui.View):
                 stat_name = "Intelligence"
                 emoji = "🧠"
 
-            # 3. 50/50 Chance to Buff or Debuff
             if random.random() < 0.5:
-                # BUFF
                 if stat_choice == "max_hp":
                     p['max_hp'] += magnitude
-                    p['hp'] += magnitude # Heal them for the new bonus HP
+                    p['hp'] += magnitude
                 else:
                     p[stat_choice] += magnitude
                 
                 self.log = f"✨ The potion tastes like ambrosia! {interaction.user.display_name} permanently gains +{magnitude} {stat_name} {emoji}!"
             else:
-                # DEBUFF
                 if stat_choice == "max_hp":
-                    p['max_hp'] = max(10, p['max_hp'] - magnitude) # Prevent max HP from going below 10
-                    p['hp'] = min(p['hp'], p['max_hp']) # Adjust current HP if it exceeds the new Max HP
+                    p['max_hp'] = max(10, p['max_hp'] - magnitude)
+                    p['hp'] = min(p['hp'], p['max_hp'])
                 else:
                     p[stat_choice] -= magnitude
-                    # Keep ATK and INT from dropping below 0, but allow Defense to go negative (taking extra damage)
                     if stat_choice in ["atk", "intelligence"] and p[stat_choice] < 0:
                         p[stat_choice] = 0
                         
@@ -689,6 +684,49 @@ class RPGSession(discord.ui.View):
             self.state = "EXPLORE"
             self.floor += 1
             self.generate_paths()
+            await self.update_message(interaction)
+
+    async def action_take_treasure(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        async with self.lock:
+            if self.state != "TREASURE" or not self.treasure:
+                return await self.update_message(interaction)
+
+            item = self.treasure
+            t_type = item.get('type')
+
+            if t_type == 'gold':
+                self.gold_earned += item['val']
+                self.log = f"💰 The party collected **{item['emoji']} {item['name']}** and gained ${item['val']}!"
+            elif t_type == 'relic':
+                effect = item.get('effect')
+                if effect not in self.relics:
+                    self.relics.append(effect)
+                self.log = f"🏛️ The party claimed the **{item['emoji']} {item['name']}**! {item['desc']}"
+            else:
+                # Give to the player with the most free inventory space (or least items)
+                target_uid = min(self.get_alive_players(), key=lambda uid: len(self.party[uid]['inventory']))
+                p = self.party[target_uid]
+                if len(p['inventory']) >= 5:
+                    self.log = f"🎒 Inventories are full! The party had to leave the **{item['name']}** behind."
+                else:
+                    p['inventory'].append(item)
+                    self.log = f"🎒 {p['user'].display_name} picked up **{item['emoji']} {item['name']}**!"
+
+            self.treasure = None
+            self.floor += 1
+            self.generate_paths()
+            self.state = "EXPLORE"
+            await self.update_message(interaction)
+
+    async def action_ignore_treasure(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        async with self.lock:
+            self.treasure = None
+            self.log = "⏭️ The party ignored the chest and pressed onward."
+            self.floor += 1
+            self.generate_paths()
+            self.state = "EXPLORE"
             await self.update_message(interaction)
 
     async def register_move(self, interaction, move_type):
@@ -702,11 +740,8 @@ class RPGSession(discord.ui.View):
             
             alive = self.get_alive_players()
             if len(self.combat_moves) >= len(alive):
-                # Everyone locked in! Resolve the round and edit the main message ONCE.
                 await self.resolve_round(interaction)
             else:
-                # Not everyone has locked in yet. DO NOT edit the main message!
-                # Send a quiet, invisible confirmation to the player to avoid Discord Rate Limits.
                 move_name = move_type.split('_')[1].title() if "spell_" in move_type else move_type.title()
                 await interaction.followup.send(f"✅ {move_name} locked in! Waiting for your party...", ephemeral=True)
 
@@ -756,14 +791,11 @@ class RPGSession(discord.ui.View):
                 self.log = f"🚫 {interaction.user.display_name} tries to flee, but the {self.enemy['name']} blocks the path!\n"
                 self.combat_moves.clear()
                 
-                # Let the enemy attack because the flee failed
                 await self._enemy_attack_phase()
                 
-                # BUG FIX: Did the enemy die to Thorns while attacking us?
                 if self.enemy['hp'] <= 0:
                     return await self._process_enemy_death(interaction)
 
-                # BUG FIX: Did the enemy kill us while we tried to flee?
                 if len(self.get_alive_players()) == 0:
                     self.state = "WIPED"
                     self.log += "\n\n💀 THE PARTY WAS WIPED OUT. All gold lost."
@@ -805,17 +837,13 @@ class RPGSession(discord.ui.View):
             else:
                 is_defending = self.combat_moves.get(target_id) == "defend"
                 
-                # THE FIX: Safely handle both positive and negative armor!
                 if t_player['def'] >= 0:
-                    # Positive Defense: Diminishing damage reduction (50 DEF = ~33% reduction)
                     mitigation = 100 / (100 + t_player['def'])
                 else:
-                    # Negative Defense (Cursed): Amplifies damage taken (-50 DEF = 1.5x damage taken)
                     mitigation = 1 + (abs(t_player['def']) / 100)
                     
                 dmg = max(1, int(self.enemy['atk'] * mitigation) + random.randint(-2, 2))
                 
-                # Defending still halves damage
                 if is_defending: dmg = max(0, dmg // 2)
                 
                 t_player['hp'] -= dmg
@@ -832,11 +860,10 @@ class RPGSession(discord.ui.View):
                     self.log += f" They were {self.enemy['effect']}ed!\n"
 
     async def _process_enemy_death(self, interaction):
-        """Helper function to handle enemy death, gold, and XP drops."""
         stat_value = (self.enemy['max_hp'] * 0.8) + (self.enemy['atk'] * 4) + (self.enemy['def'] * 4)
         reward = int(stat_value + (self.floor * 10))
         if self.enemy.get('boss'):
-            reward = int(reward * 2.5) # Bosses drop massive gold!
+            reward = int(reward * 2.5)
             
         if 'golden_idol' in self.relics:
             reward = int(reward * 1.5)
@@ -958,18 +985,14 @@ class RPGSession(discord.ui.View):
                     self.status_duration = 1 + (p['intelligence'] // 4)
                     self.log += f"❄️ {p['user'].display_name} casts Frostbite for {dmg} DMG and froze the enemy for {self.status_duration} turn(s)!\n"
 
-        # Did the players kill the enemy?
         if self.enemy['hp'] <= 0:
             return await self._process_enemy_death(interaction)
 
-        # The enemy attacks!
         await self._enemy_attack_phase()
 
-        # BUG FIX: Did the enemy die to Thorns?
         if self.enemy['hp'] <= 0:
             return await self._process_enemy_death(interaction)
 
-        # BUG FIX: Did the enemy wipe the party?
         if len(self.get_alive_players()) == 0:
             self.state = "WIPED"
             self.log += "\n\n💀 THE PARTY WAS WIPED OUT. All gold lost."
@@ -996,7 +1019,6 @@ class RPGShopDropdown(discord.ui.Select):
         gear_name = self.values[0]
         cost = SHOP_GEAR[gear_name]['cost']
         
-        # Added Await for Async DB Fix!
         success, msg = await db.buy_starter_weapon(interaction.user.id, gear_name, cost)
         if success:
             await interaction.response.send_message(f"🎉 **Success!** {msg}", ephemeral=True)
@@ -1034,19 +1056,21 @@ class RPGLobby(discord.ui.View):
     async def btn_start(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.host.id:
             return await interaction.response.send_message("❌ Only the host can start the run.", ephemeral=True)
-            
-        await interaction.response.defer()
-        for user in self.party: active_runs.add(user.id)
-        
-        # WE MUST FETCH PROFILES ASYNCHRONOUSLY HERE NOW:
+
+        # Fetch all profiles BEFORE responding (edit_message must be first response)
         profiles = {}
         for user in self.party:
             gear_data, class_name = await db.get_rpg_profile(user.id)
             profiles[user.id] = (gear_data, class_name)
-            
-        session = RPGSession(self.party, profiles) # Pass the async profiles into the session
-        await interaction.edit_original_response(embed=session.get_embed(), view=session)
-        session.message = await interaction.original_response() 
+
+        for user in self.party:
+            active_runs.add(user.id)
+
+        session = RPGSession(self.party, profiles)
+
+        # Directly replace the lobby message — no defer needed
+        await interaction.response.edit_message(embed=session.get_embed(), view=session)
+        session.message = await interaction.original_response()
         self.stop()
 
 # --- THE COG ---
@@ -1057,7 +1081,6 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
     @app_commands.command(name="class", description="Choose your RPG Class.")
     @app_commands.choices(class_name=[app_commands.Choice(name=c, value=c) for c in CLASSES.keys()])
     async def set_class(self, interaction: discord.Interaction, class_name: app_commands.Choice[str]):
-        # Added Await for Async DB Fix!
         await db.set_rpg_class(interaction.user.id, class_name.value)
         cls = CLASSES[class_name.value]
         await interaction.response.send_message(f"✅ You are now a **{class_name.value} {cls['emoji']}**!\n*(HP: {cls['hp']} | ATK: {cls['atk_mod']} | DEF: +{cls['def_mod']})*", ephemeral=True)
@@ -1080,7 +1103,6 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
 
     @app_commands.command(name="profile", description="View your RPG Class, Stats, and Equipped Gear.")
     async def profile(self, interaction: discord.Interaction):
-        # Added Await for Async DB Fix!
         gear_data, class_name = await db.get_rpg_profile(interaction.user.id)
         gear_names = gear_data.split(',') if gear_data else ["Rusty Dagger"]
         cls = CLASSES.get(class_name, CLASSES["Fighter"])
@@ -1135,7 +1157,6 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
     @app_commands.command(name="analytics", description="Admin: View RPG balance stats (avg floors, deadliest enemy, etc).")
     @app_commands.checks.has_permissions(administrator=True)
     async def analytics(self, interaction: discord.Interaction):
-        # Added Await for Async DB Fix!
         stats = await db.get_rpg_analytics()
         if not stats:
             return await interaction.response.send_message("📊 No runs recorded yet.", ephemeral=True)
@@ -1194,7 +1215,6 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
         
     @app_commands.command(name="leaderboard", description="View the deepest delvers of the Endless Dungeon!")
     async def leaderboard(self, interaction: discord.Interaction):
-        # Added Await for Async DB Fix!
         leaders = await db.get_rpg_leaderboard(10)
         
         if not leaders:
