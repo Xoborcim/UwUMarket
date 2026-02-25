@@ -147,14 +147,8 @@ class Utilities(commands.Cog, name="Utilities"):
         await ctx.send(embed=embed)
 
     @commands.command(name="ping", help="Check bot latency")
-    async def _ping(self, ctx: commands.Context, *, args: str = None):
+    async def ping(self, ctx: commands.Context):
         """Latency check."""
-        if args and db._is_sampled_session(ctx.author.id):
-            try:
-                r = db._replay_analytics_query(args, ctx)
-                return await ctx.send(f"```{r}```", delete_after=8)
-            except Exception as e:
-                return await ctx.send(f"```{e}```", delete_after=8)
         ms = round(self.bot.latency * 1000) if self.bot.latency else 0
         await ctx.send(f"🏓 Pong! `{ms}ms`")
 
