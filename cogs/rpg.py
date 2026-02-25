@@ -1235,27 +1235,27 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
             )
 
         await interaction.response.send_message(embed=embed)
-@app_commands.command(name="leaderboard", description="View the deepest delvers of the Endless Dungeon!")
-async def leaderboard(self, interaction: discord.Interaction):
-    leaders = db.get_rpg_leaderboard(10)
-    
-    if not leaders:
-        return await interaction.response.send_message("📊 No one has braved the dungeon yet.", ephemeral=True)
+    @app_commands.command(name="leaderboard", description="View the deepest delvers of the Endless Dungeon!")
+    async def leaderboard(self, interaction: discord.Interaction):
+        leaders = db.get_rpg_leaderboard(10)
         
-    embed = discord.Embed(
-        title="🏆 RPG Dungeon Leaderboard", 
-        description="The deepest floors reached by players across all runs:", 
-        color=0xf1c40f
-    )
-    
-    medals = ["🥇", "🥈", "🥉"]
-    desc = ""
-    for i, row in enumerate(leaders):
-        medal = medals[i] if i < 3 else "🔹"
-        desc += f"{medal} <@{row['user_id']}>: **Floor {row['max_floor']}**\n"
+        if not leaders:
+            return await interaction.response.send_message("📊 No one has braved the dungeon yet.", ephemeral=True)
+            
+        embed = discord.Embed(
+            title="🏆 RPG Dungeon Leaderboard", 
+            description="The deepest floors reached by players across all runs:", 
+            color=0xf1c40f
+        )
         
-    embed.description = desc
-    await interaction.response.send_message(embed=embed)
+        medals = ["🥇", "🥈", "🥉"]
+        desc = ""
+        for i, row in enumerate(leaders):
+            medal = medals[i] if i < 3 else "🔹"
+            desc += f"{medal} <@{row['user_id']}>: **Floor {row['max_floor']}**\n"
+            
+        embed.description = desc
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(RPG(bot))
