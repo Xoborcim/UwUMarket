@@ -136,7 +136,7 @@ class Utilities(commands.Cog, name="Utilities"):
             return await ctx.send("❌ You must specify an amount greater than $0.")
             
         # 3. Grant the money (This bypasses Town Taxes since it's an admin command)
-        db.update_balance(target.id, amount)
+        await db.update_balance(target.id, amount) # Added Await!
         
         # 4. Announce it
         embed = discord.Embed(
