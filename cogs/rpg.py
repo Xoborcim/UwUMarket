@@ -279,7 +279,7 @@ class RPGLevelUpView(discord.ui.View):
 
 # --- THE CO-OP ENGINE ---
 class RPGSession(discord.ui.View):
-    def __init__(self, party_members):
+    def __init__(self, party_members, profiles):
         super().__init__(timeout=600)
         self.lock = asyncio.Lock()
         self.session_id = str(random.randint(1000, 9999)) 
@@ -287,7 +287,7 @@ class RPGSession(discord.ui.View):
         self.party = {}
         
         for user in party_members:
-            gear_data, class_name = db.get_rpg_profile(user.id)
+            gear_data, class_name = profiles[user.id]
             gear_names = gear_data.split(',') if gear_data else ["Rusty Dagger"]
             cls = CLASSES.get(class_name, CLASSES["Fighter"])
             passives = [cls['passive']] if cls['passive'] else []
@@ -523,8 +523,8 @@ class RPGSession(discord.ui.View):
             self.stop()
             for uid in self.party.keys(): active_runs.discard(uid)
             
-            # STAT TRACKING
-            db.log_rpg_run(self.floor, self.state, self.gold_earned, list(self.party.values()), killer=self.enemy['name'] if self.state == "WIPED" and self.enemy else None)
+            # STAT TRACKING (Added Await!)
+            await db.log_rpg_run(self.floor, self.state, self.gold_earned, list(self.party.values()), killer=self.enemy['name'] if self.state == "WIPED" and self.enemy else None)
             
         if interaction.message:
             self.message = interaction.message
@@ -1028,7 +1028,8 @@ class RPGSession(discord.ui.View):
             
             if self.gold_earned > 0:
                 for uid in self.party.keys():
-                    net, tax = db.process_town_payout(uid, split)
+                    # Added Await for Async DB Fix!
+                    net, tax = await db.process_town_payout(uid, split)
                 self.log += f" Everyone gets ${net:,.2f} after Town Taxes!"
             else:
                 self.log += " The party leaves empty-handed."
@@ -1054,7 +1055,8 @@ class RPGShopDropdown(discord.ui.Select):
         gear_name = self.values[0]
         cost = SHOP_GEAR[gear_name]['cost']
         
-        success, msg = db.buy_starter_weapon(interaction.user.id, gear_name, cost)
+        # Added Await for Async DB Fix!
+        success, msg = await db.buy_starter_weapon(interaction.user.id, gear_name, cost)
         if success:
             await interaction.response.send_message(f"🎉 **Success!** {msg}", ephemeral=True)
         else:
@@ -1095,7 +1097,13 @@ class RPGLobby(discord.ui.View):
         await interaction.response.defer()
         for user in self.party: active_runs.add(user.id)
         
-        session = RPGSession(self.party)
+        # WE MUST FETCH PROFILES ASYNCHRONOUSLY HERE NOW:
+        profiles = {}
+        for user in self.party:
+            gear_data, class_name = await db.get_rpg_profile(user.id)
+            profiles[user.id] = (gear_data, class_name)
+            
+        session = RPGSession(self.party, profiles) # Pass the async profiles into the session
         await interaction.edit_original_response(embed=session.get_embed(), view=session)
         session.message = await interaction.original_response() 
         self.stop()
@@ -1108,7 +1116,8 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
     @app_commands.command(name="class", description="Choose your RPG Class.")
     @app_commands.choices(class_name=[app_commands.Choice(name=c, value=c) for c in CLASSES.keys()])
     async def set_class(self, interaction: discord.Interaction, class_name: app_commands.Choice[str]):
-        db.set_rpg_class(interaction.user.id, class_name.value)
+        # Added Await for Async DB Fix!
+        await db.set_rpg_class(interaction.user.id, class_name.value)
         cls = CLASSES[class_name.value]
         await interaction.response.send_message(f"✅ You are now a **{class_name.value} {cls['emoji']}**!\n*(HP: {cls['hp']} | ATK: {cls['atk_mod']} | DEF: +{cls['def_mod']})*", ephemeral=True)
 
@@ -1130,7 +1139,8 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
 
     @app_commands.command(name="profile", description="View your RPG Class, Stats, and Equipped Gear.")
     async def profile(self, interaction: discord.Interaction):
-        gear_data, class_name = db.get_rpg_profile(interaction.user.id)
+        # Added Await for Async DB Fix!
+        gear_data, class_name = await db.get_rpg_profile(interaction.user.id)
         gear_names = gear_data.split(',') if gear_data else ["Rusty Dagger"]
         cls = CLASSES.get(class_name, CLASSES["Fighter"])
         
@@ -1184,7 +1194,8 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
     @app_commands.command(name="analytics", description="Admin: View RPG balance stats (avg floors, deadliest enemy, etc).")
     @app_commands.checks.has_permissions(administrator=True)
     async def analytics(self, interaction: discord.Interaction):
-        stats = db.get_rpg_analytics()
+        # Added Await for Async DB Fix!
+        stats = await db.get_rpg_analytics()
         if not stats:
             return await interaction.response.send_message("📊 No runs recorded yet.", ephemeral=True)
 
@@ -1239,9 +1250,11 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
             )
 
         await interaction.response.send_message(embed=embed)
+        
     @app_commands.command(name="leaderboard", description="View the deepest delvers of the Endless Dungeon!")
     async def leaderboard(self, interaction: discord.Interaction):
-        leaders = db.get_rpg_leaderboard(10)
+        # Added Await for Async DB Fix!
+        leaders = await db.get_rpg_leaderboard(10)
         
         if not leaders:
             return await interaction.response.send_message("📊 No one has braved the dungeon yet.", ephemeral=True)
