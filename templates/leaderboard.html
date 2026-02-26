@@ -52,10 +52,10 @@
             
         </div>
         <div class="user-status">
-            <a href="/profile/{{ session['username'] }}" class="user-info">
-                <span>👤 <strong>{{ session['username'] }}</strong></span>
-                <span style="color: #475569;">|</span>
-                <span id="gold-counter" style="color: #f1c40f; font-weight: bold; font-family: monospace; font-size: 1.1em;">💰 Loading...</span>
+            <a href="/profile/{{ user['username'] if user['username'] else user['user_id'] }}" class="entry">
+                <span class="rank rank-{{ loop.index if loop.index <= 3 else 'other' }}">#{{ loop.index }}</span>
+                <span class="name">{{ user['username'] or user['user_id'] }}</span>
+                <span class="value">${{ "{:,.2f}".format(user['balance']) }}</span>
             </a>
             <a href="/logout" style="color: var(--text-muted); font-size: 0.8rem; text-decoration: none;">Logout</a>
         </div>
