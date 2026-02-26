@@ -127,6 +127,15 @@ def profile(user_id):
 
 @app.route('/market')
 def market():
+    # 1. Check if the user is logged in
+    if 'user_id' not in session:
+        # We pass a message so the user knows why they were redirected
+        return render_template('market.html', 
+                               items=[], 
+                               message="Please login with Discord to view the Marketplace.", 
+                               success=False)
+
+    # 2. If they are logged in, proceed as normal
     items = run_async(get_market_listings())
     return render_template('market.html', items=items)
 
