@@ -134,22 +134,25 @@ def profile(identifier):
         async with aiosqlite.connect(DB_NAME) as db_conn:
             db_conn.row_factory = aiosqlite.Row
             
-            # 1. Try searching by user_id first (if it's a number)
+            # 1. Try ID search if it's a number (Discord IDs are long strings of digits)
             if val.isdigit():
                 async with db_conn.execute("SELECT * FROM users WHERE user_id = ?", (int(val),)) as c:
                     user = await c.fetchone()
-                    if user: return user
+                    if user: 
+                        return user
             
-            # 2. If not found or not a number, try searching by username
-            async with db_conn.execute("SELECT * * FROM users WHERE username = ?", (val,)) as c:
+            # 2. Try Username search (for the new text-based links)
+            async with db_conn.execute("SELECT * FROM users WHERE username = ?", (val,)) as c:
                 return await c.fetchone()
 
+    # Run the smart search
     player = run_async(get_user_smart(identifier))
     
     if not player:
+        # Helpful error message to see what the server was looking for
         return f"<h1>404: Resident '{identifier}' not found in Polyville</h1>", 404
     
-    # We pass 'player' to the HTML so all your stats (balance, etc.) show up
+    # Render the page with the found player data
     return render_template('profile.html', player=player)
 
 # --- MARKET ROUTES ---
