@@ -7,6 +7,13 @@ DB_NAME = "market.db"
 
 async def initialize_db():
     async with aiosqlite.connect(DB_NAME) as db:
+        # 1. CORE TABLES (Added username here)
+        await db.execute('''CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY, 
+            username TEXT, 
+            balance REAL DEFAULT 1000.00, 
+            last_daily DATETIME
+        )''')
         # 1. CORE TABLES
         await db.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 1000.00, last_daily DATETIME)''')
         await db.execute('''CREATE TABLE IF NOT EXISTS markets (
@@ -54,6 +61,7 @@ async def initialize_db():
         
         # Safe Column Migrations
         columns = [
+            ("users", "username", "TEXT"),
             ("town", "board_channel_id", "INTEGER"),
             ("town", "board_message_id", "INTEGER"),
             ("town", "last_upkeep", "DATETIME"),
@@ -68,8 +76,10 @@ async def initialize_db():
         ]
         
         for table, col, dtype in columns:
-            try: await db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {dtype}")
-            except: pass
+            try: 
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {dtype}")
+            except: 
+                pass # Column already exists
         
         await db.execute("UPDATE users SET balance = ROUND(balance, 2)")
 
@@ -86,6 +96,17 @@ async def initialize_db():
         )''')
         await db.commit()
 
+
+async def sync_user_data(user_id, username):
+    """Ensures the user exists and their username is up to date."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            INSERT INTO users (user_id, username) VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET username = excluded.username
+        """, (user_id, username))
+        await db.commit()
+        
+        
 # --- MARKET CREATION ---
 async def create_market_custom_date(question, creator_id, close_time_obj, options=["YES", "NO"]):
     async with aiosqlite.connect(DB_NAME) as db:
