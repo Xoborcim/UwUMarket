@@ -199,12 +199,14 @@
 <body>
 
     <nav>
-        <div class="nav-links">
-            <a href="/market" class="logo" style="color: var(--accent-color); margin-right: 40px;">Polyville</a>
-            <a href="/town">Town Hall 🏛️</a>
-            <a href="/inventory">Inventory 🎒</a>
-            <a href="/exchange">Exchange 📈</a>
-            <a href="/leaderboard">Leaderboard</a>
+        <div style="display: flex; gap: 30px; align-items: center;">
+            <a href="/market" class="logo">Polyville</a>
+            <a href="/exchange" style="color: white; text-decoration: none; font-weight: 600;">Exchange 📈</a>
+            <a href="/town" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Town Hall</a>
+            <a href="/lootbox" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Lootboxes</a>
+            <a href="/inventory" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Inventory</a>
+            <a href="/leaderboard" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Leaderboard</a>
+            
         </div>
         <div class="user-status">
             {% if session.get('user_id') %}
