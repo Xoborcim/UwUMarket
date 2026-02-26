@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polyville | Town Hall</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f0f1b; --card-bg: #16213e; --accent-color: #e94560;
+            --text-main: #ffffff; --text-muted: #94a3b8; --border-color: #1e293b;
+        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; }
+        nav { background: #1a1a2e; padding: 1rem 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100; }
+        .logo { font-weight: 800; font-size: 1.5rem; color: var(--accent-color); text-decoration: none; text-transform: uppercase; letter-spacing: 2px;}
+        .user-info { background: var(--border-color); padding: 8px 15px; border-radius: 20px; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; text-decoration: none; color: white; cursor: pointer; }
+        
+        .container { max-width: 900px; margin: 40px auto; padding: 0 20px; }
+        
+        /* THEME CHANGES BASED ON FAMINE */
+        .town-header {
+            background: var(--card-bg); border-radius: 20px; padding: 40px; text-align: center; margin-bottom: 30px;
+            border: 2px solid {% if town['famine'] == 1 %}#e74c3c{% else %}var(--border-color){% endif %};
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .famine-warning {
+            background: rgba(231, 76, 60, 0.2); border: 1px solid #e74c3c; color: #ff7675;
+            padding: 15px; border-radius: 10px; font-weight: bold; text-align: center; margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; transform: scale(1.02); } 100% { opacity: 0.8; } }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+        .stat-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 15px; padding: 25px; text-align: center; }
+        .stat-label { color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .stat-value { font-size: 2rem; font-weight: 800; color: white; }
+        
+        .action-box { margin-top: 40px; background: var(--card-bg); border-radius: 15px; padding: 30px; border: 1px solid var(--border-color); text-align: center;}
+        .donate-btn { background: #3498db; color: white; border: none; padding: 15px 30px; border-radius: 10px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: transform 0.2s; margin: 10px; }
+        .donate-btn:hover { transform: scale(1.05); }
+
+        /* MODAL */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-content { background: var(--card-bg); padding: 30px; border-radius: 15px; border: 1px solid var(--border-color); width: 350px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5);}
+        .modal-content h2 { margin-top: 0; }
+        .price-input { width: 100%; padding: 12px; margin: 20px 0; background: #0f0f1b; border: 1px solid var(--border-color); color: white; border-radius: 8px; font-size: 1.2rem; text-align: center; box-sizing: border-box; }
+        .modal-buttons { display: flex; gap: 10px; }
+        .btn-cancel { flex: 1; background: #475569; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .btn-confirm { flex: 1; background: #2ecc71; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div style="display: flex; gap: 30px; align-items: center;">
+            <a href="/market" class="logo">Polyville</a>
+            <a href="/town" style="color: white; text-decoration: none; font-weight: 600;">Town Hall 🏛️</a>
+            <a href="/market" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Market</a>
+            <a href="/lootbox" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Lootboxes 🎁</a>
+            <a href="/inventory" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Inventory 🎒</a>
+            <a href="/exchange" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Exchange 📈</a>
+            <a href="/leaderboard" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Leaderboard</a>
+            
+        </div>
+        <div class="user-status">
+            {% if session.get('user_id') %}
+            <a href="/profile/{{ session['user_id'] }}" class="user-info">
+                <span>👤 <strong>{{ session['username'] }}</strong></span>
+                <span style="color: #475569;">|</span>
+                <span id="gold-counter" style="color: #f1c40f; font-weight: bold; font-family: monospace; font-size: 1.1em;">💰 Loading...</span>
+            </a>
+            {% else %}
+                <a href="/login" class="user-info" style="background: #5865F2; border: none;">Login with Discord</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div class="container">
+        
+        {% if town['famine'] == 1 %}
+        <div class="famine-warning">
+            ⚠️ WARNING: THE TOWN IS IN A FAMINE! ⚠️<br>All job payouts and chat incomes are reduced by 50%. Donate food immediately!
+        </div>
+        {% endif %}
+
+        <div class="town-header">
+            <h1 style="font-size: 3.5rem; margin: 0; color: var(--accent-color);">🏛️ Town of Polyville</h1>
+            <p style="color: var(--text-muted); font-size: 1.2rem;">Level {{ town['level'] }} | Population: {{ town['user_count'] }}</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Town Treasury</div>
+                <div class="stat-value" style="color: #f1c40f;">${{ "{:,.2f}".format(town['treasury']) }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Food Supply</div>
+                <div class="stat-value" style="color: {% if town['famine'] == 1 %}#e74c3c{% else %}#2ecc71{% endif %};">{{ town['food'] }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Income Tax Rate</div>
+                <div class="stat-value">{{ (town['tax_rate'] * 100) | int }}%</div>
+            </div>
+        </div>
+
+        <div class="action-box">
+            <h2 style="margin-top:0;">Support Your Town</h2>
+            <p style="color: var(--text-muted); margin-bottom: 20px;">Use your personal funds to improve the town. High-level towns offer better job multipliers!</p>
+            
+            <button class="donate-btn" onclick="openDonateModal('gold')" style="background: #f39c12; color: #000;">💰 Donate Gold</button>
+            <button class="donate-btn" onclick="openDonateModal('food')" style="background: #27ae60;">🍞 Buy Food ($10/ea)</button>
+        </div>
+        
+        <div id="notification-banner" style="display: none; padding: 15px; margin-top: 20px; border-radius: 8px; text-align: center; font-weight: bold; color: white;"></div>
+    </div>
+
+    <div class="modal-overlay" id="donateModal">
+        <div class="modal-content">
+            <h2 id="modal-title" style="color: var(--accent-color);">Donate</h2>
+            <p id="modal-desc" style="color: var(--text-muted);"></p>
+            
+            <input type="number" id="donate-amount" class="price-input" placeholder="Amount" min="1">
+            <input type="hidden" id="donate-type">
+            
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+                <button class="btn-confirm" id="confirm-btn" onclick="submitDonation()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Live Gold Counter
+        async function fetchLiveGold() {
+            try {
+                const response = await fetch('/api/gold');
+                const data = await response.json();
+                if (data.success) {
+                    const formattedGold = data.gold.toLocaleString('en-US', {minimumFractionDigits: 2});
+                    document.getElementById('gold-counter').innerText = '💰 $' + formattedGold;
+                }
+            } catch (error) {}
+        }
+        fetchLiveGold();
+        setInterval(fetchLiveGold, 10000);
+
+        function openDonateModal(type) {
+            document.getElementById('donate-type').value = type;
+            document.getElementById('donate-amount').value = "";
+            
+            if(type === 'gold') {
+                document.getElementById('modal-title').innerText = "Donate Gold";
+                document.getElementById('modal-desc').innerText = "How much gold do you want to transfer to the treasury?";
+            } else {
+                document.getElementById('modal-title').innerText = "Buy Food";
+                document.getElementById('modal-desc').innerText = "How much food do you want to buy? ($10 = 1 Food)";
+            }
+            
+            document.getElementById('donateModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('donateModal').style.display = 'none';
+        }
+
+        async function submitDonation() {
+            const amount = document.getElementById('donate-amount').value;
+            const type = document.getElementById('donate-type').value;
+            const confirmBtn = document.getElementById('confirm-btn');
+            
+            if (!amount || amount <= 0) return;
+
+            confirmBtn.innerText = "Processing...";
+            confirmBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/donate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: amount, type: type })
+                });
+                
+                const result = await response.json();
+                closeModal();
+                
+                const banner = document.getElementById('notification-banner');
+                banner.innerText = result.message;
+                banner.style.display = 'block';
+
+                if (result.success) {
+                    banner.style.backgroundColor = '#2ecc71';
+                    fetchLiveGold();
+                    // Reload the page after 2 seconds to show the updated Town Stats
+                    setTimeout(() => { window.location.reload(); }, 2000);
+                } else {
+                    banner.style.backgroundColor = '#e74c3c';
+                }
+
+            } catch (error) {
+                alert("Server error.");
+            } finally {
+                confirmBtn.innerText = "Confirm";
+                confirmBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

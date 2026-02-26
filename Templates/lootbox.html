@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polyville | Unboxing</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f0f1b; --card-bg: #16213e; --accent-color: #e94560;
+            --text-main: #ffffff; --text-muted: #94a3b8; --border-color: #1e293b;
+            --common: #b2bec3; --uncommon: #2ecc71; --rare: #3498db; 
+            --epic: #9b59b6; --legendary: #f1c40f; --mythic: #e74c3c;
+        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; }
+        nav { background: #1a1a2e; padding: 1rem 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); }
+        .logo { font-weight: 800; font-size: 1.5rem; color: var(--accent-color); text-decoration: none; text-transform: uppercase; letter-spacing: 2px;}
+        .user-status { display: flex; align-items: center; gap: 15px; }
+        .user-info { background: var(--border-color); padding: 8px 15px; border-radius: 20px; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; }
+        
+        .container { max-width: 800px; margin: 60px auto; text-align: center; }
+        
+        select {
+            background: var(--card-bg); color: white; border: 1px solid var(--border-color);
+            padding: 10px 20px; font-size: 1.1rem; border-radius: 8px; margin-bottom: 20px; cursor: pointer;
+        }
+
+        .unboxing-stage {
+            background: var(--card-bg); border: 2px dashed var(--border-color); border-radius: 20px;
+            padding: 50px 20px; margin-top: 10px; min-height: 400px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+
+        .box-icon { font-size: 100px; margin-bottom: 20px; transition: transform 0.2s; }
+
+        .open-btn {
+            background: var(--accent-color); color: white; border: none; padding: 15px 40px;
+            border-radius: 10px; font-size: 1.2rem; font-weight: 800; cursor: pointer; text-transform: uppercase;
+            box-shadow: 0 5px 15px rgba(233, 69, 96, 0.4); transition: transform 0.1s, background 0.2s;
+        }
+        .open-btn:hover { background: #ff4d6d; transform: scale(1.05); }
+        .open-btn:disabled { background: #475569; cursor: not-allowed; box-shadow: none; transform: none;}
+
+        .shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-8px, 0, 0); }
+            40%, 60% { transform: translate3d(8px, 0, 0); }
+        }
+
+        .revealed-item {
+            display: none; background: #0f0f1b; border: 2px solid; border-radius: 15px;
+            padding: 20px; width: 250px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-top: 20px;
+        }
+        .item-image { width: 100%; height: 150px; object-fit: contain; margin-bottom: 15px; }
+        .tier-label { font-size: 0.8rem; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
+        .item-name { font-size: 1.4rem; font-weight: bold; margin: 5px 0; color: white;}
+
+        .tier-Common { border-color: var(--common); color: var(--common); }
+        .tier-Uncommon { border-color: var(--uncommon); color: var(--uncommon); }
+        .tier-Rare { border-color: var(--rare); color: var(--rare); }
+        .tier-Epic { border-color: var(--epic); color: var(--epic); }
+        .tier-Legendary { border-color: var(--legendary); color: var(--legendary); box-shadow: 0 0 30px rgba(241, 196, 15, 0.3); }
+        .tier-Mythic { border-color: var(--mythic); color: var(--mythic); box-shadow: 0 0 40px rgba(231, 76, 60, 0.4); }
+
+        #error-msg { color: #e74c3c; font-weight: bold; margin-top: 15px; height: 20px; }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div style="display: flex; gap: 30px; align-items: center;">
+            <a href="/market" class="logo">Polyville</a>
+            <a href="/town" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Town Hall 🏛️</a>
+            <a href="/market" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Market</a>
+            <a href="/inventory" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Inventory 🎒</a>
+            <a href="/exchange" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Exchange 📈</a>
+            <a href="/leaderboard" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Leaderboard</a>
+            <a href="/dungeon" style="color: white; text-decoration: none; font-weight: 600;">Dungeon 🏰</a>
+            </div>
+        <div class="user-status">
+            <a href="/profile/{{ session['user_id'] }}" class="user-info" style="text-decoration: none; color: white; cursor: pointer;">
+                <span>👤 <strong>{{ session['username'] }}</strong></span>
+                <span style="color: #475569;">|</span>
+                <span id="gold-counter" style="color: #f1c40f; font-weight: bold; font-family: monospace; font-size: 1.1em;">💰 Loading...</span>
+                </a>
+            <a href="/logout" style="color: var(--text-muted); font-size: 0.8rem; text-decoration: none;">Logout</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1>Purchase a Lootbox</h1>
+        <p style="color: var(--text-muted)">Costs $500.00 to roll for a random item.</p>
+
+        <select id="set-selector">
+            {% for set_name in available_sets %}
+                <option value="{{ set_name }}">{{ set_name | replace('_', ' ') }}</option>
+            {% endfor %}
+            {% if not available_sets %}
+                <option value="Base_Set">Base Set</option>
+            {% endif %}
+        </select>
+
+        <div class="unboxing-stage">
+            <div id="box-visual" class="box-icon">📦</div>
+            
+            <button id="open-btn" class="open-btn" onclick="openLootbox()">Open Box ($500)</button>
+            <div id="error-msg"></div>
+
+            <div id="reward-card" class="revealed-item">
+                <div id="reward-tier" class="tier-label"></div>
+                <img id="reward-image" class="item-image" src="">
+                <div id="reward-name" class="item-name"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchLiveGold() {
+            try {
+                const response = await fetch('/api/gold');
+                const data = await response.json();
+                if (data.success) {
+                    const formattedGold = data.gold.toLocaleString('en-US', {minimumFractionDigits: 2});
+                    document.getElementById('gold-counter').innerText = '💰 $' + formattedGold;
+                }
+            } catch (error) {}
+        }
+        fetchLiveGold();
+        setInterval(fetchLiveGold, 3000);
+
+        async function openLootbox() {
+            const btn = document.getElementById('open-btn');
+            const box = document.getElementById('box-visual');
+            const card = document.getElementById('reward-card');
+            const errorMsg = document.getElementById('error-msg');
+            const selectedSet = document.getElementById('set-selector').value;
+
+            errorMsg.innerText = "";
+            card.style.display = "none";
+            btn.disabled = true;
+            btn.innerText = "Unlocking...";
+
+            try {
+                // Send the selected set to Python using JSON
+                const response = await fetch('/api/open_box', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ set_name: selectedSet })
+                });
+                const result = await response.json();
+
+                if (!result.success) {
+                    errorMsg.innerText = result.message;
+                    btn.disabled = false;
+                    btn.innerText = "Open Box ($500)";
+                    return;
+                }
+
+                fetchLiveGold(); // Update gold immediately
+
+                // Play Animation
+                box.innerText = "📦";
+                box.classList.add('shake');
+                
+                setTimeout(() => {
+                    box.classList.remove('shake');
+                    box.innerText = "✨"; 
+                    
+                    document.getElementById('reward-tier').innerText = result.item.tier;
+                    document.getElementById('reward-name').innerText = result.item.name;
+                    document.getElementById('reward-image').src = result.item.image;
+                    
+                    card.className = "revealed-item tier-" + result.item.tier;
+                    document.getElementById('reward-tier').className = "tier-label text-" + result.item.tier;
+
+                    card.style.display = "block";
+                    btn.disabled = false;
+                    btn.innerText = "Open Another ($500)";
+                }, 500);
+
+            } catch (error) {
+                errorMsg.innerText = "Server communication failed.";
+                btn.disabled = false;
+                btn.innerText = "Open Box ($500)";
+            }
+        }
+    </script>
+</body>
+</html>
