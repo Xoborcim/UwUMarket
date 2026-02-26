@@ -351,25 +351,27 @@ def leaderboard():
         async with aiosqlite.connect(DB_NAME) as db_conn:
             db_conn.row_factory = aiosqlite.Row
             
-            # 1. Richest (Grabbing username directly from users table)
+            # 1. Richest
             async with db_conn.execute("""
-                SELECT COALESCE(username, user_id) AS display_name, balance FROM users ORDER BY balance DESC LIMIT 10"
+                SELECT username, balance 
+                FROM users 
                 WHERE username IS NOT NULL 
                 ORDER BY balance DESC LIMIT 10
             """) as c:
                 richest = await c.fetchall()
             
-            # 2. Strongest (Grabbing username directly from users table)
+            # 2. Strongest
             async with db_conn.execute("""
-                SELECT COALESCE(username, user_id) AS display_name, max_floor FROM users 
+                SELECT username, max_floor 
+                FROM users 
                 WHERE username IS NOT NULL 
                 ORDER BY max_floor DESC LIMIT 10
             """) as c:
                 strongest = await c.fetchall()
                 
-            # 3. Collectors (JOINING users and inventory to count items by name)
+            # 3. Collectors
             async with db_conn.execute("""
-                SELECT COALESCE(u.username, u.user_id) AS display_name, COUNT(i.item_id) as item_count 
+                SELECT u.username, COUNT(i.item_id) as item_count 
                 FROM users u
                 JOIN inventory i ON u.user_id = i.user_id 
                 WHERE u.username IS NOT NULL
@@ -378,7 +380,7 @@ def leaderboard():
             """) as c:
                 collectors = await c.fetchall()
                 
-            return richest, strongest, collectors
+        return richest, strongest, collectors
 
     richest, strongest, collectors = run_async(get_leaders())
     
