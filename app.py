@@ -128,12 +128,21 @@ def logout():
     session.clear()
     return redirect(url_for('market'))
 
-@app.route('/profile/<int:user_id>')
-def profile(user_id):
-    player = run_async(get_player_stats(user_id))
-    if not player: return "<h1>404: Player not found in market.db</h1>", 404
-    return render_template('profile.html', player=player, user_id=user_id)
+@app.route('/profile/<username>') # Changed <int:user_id> to <username>
+def profile(username):
+    async def get_user_by_name(name):
+        async with aiosqlite.connect(DB_NAME) as db_conn:
+            db_conn.row_factory = aiosqlite.Row
+            # Search by username instead of ID
+            async with db_conn.execute("SELECT * FROM users WHERE username = ?", (name,)) as cursor:
+                return await cursor.fetchone()
 
+    player = run_async(get_user_by_name(username))
+    if not player:
+        return "<h1>404: Player not found in market.db</h1>", 404
+    
+    # Pass the user_id from the database to the template so inventory still works
+    return render_template('profile.html', player=player, user_id=player['user_id'])
 # --- MARKET ROUTES ---
 
 @app.route('/market')
@@ -327,8 +336,6 @@ def api_buy_shares():
 
 # --- LEADERBOARD ROUTES ---
 
-# --- LEADERBOARD ROUTES ---
-
 @app.route('/leaderboard')
 def leaderboard():
     async def get_leaders():
@@ -337,7 +344,7 @@ def leaderboard():
             
             # 1. Richest (Grabbing username directly from users table)
             async with db_conn.execute("""
-                SELECT username, balance FROM users 
+                SELECT COALESCE(username, user_id) AS display_name, balance FROM users ORDER BY balance DESC LIMIT 10"
                 WHERE username IS NOT NULL 
                 ORDER BY balance DESC LIMIT 10
             """) as c:
@@ -345,7 +352,7 @@ def leaderboard():
             
             # 2. Strongest (Grabbing username directly from users table)
             async with db_conn.execute("""
-                SELECT username, max_floor FROM users 
+                SELECT COALESCE(username, user_id) AS display_name, max_floor FROM users 
                 WHERE username IS NOT NULL 
                 ORDER BY max_floor DESC LIMIT 10
             """) as c:
@@ -353,7 +360,7 @@ def leaderboard():
                 
             # 3. Collectors (JOINING users and inventory to count items by name)
             async with db_conn.execute("""
-                SELECT u.username, COUNT(i.item_id) as item_count 
+                SELECT COALESCE(u.username, u.user_id) AS display_name, COUNT(i.item_id) as item_count 
                 FROM users u
                 JOIN inventory i ON u.user_id = i.user_id 
                 WHERE u.username IS NOT NULL
