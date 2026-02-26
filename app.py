@@ -110,8 +110,19 @@ def callback():
     # Notify everyone that a player has entered
     broadcast_update('player_login', {'username': user_info['username']})
     
+    user_info = requests.get('https://discord.com/api/users/@me', 
+                             headers={'Authorization': f"Bearer {token_json['access_token']}"}).json()
+    
+    user_id = int(user_info['id'])
+    username = user_info['username']
+    
+    # NEW: Sync the username to the DB immediately
+    run_async(db.sync_user_data(user_id, username))
+    
+    session['user_id'] = user_id
+    session['username'] = username
     return redirect(url_for('market'))
-
+    
 @app.route('/logout')
 def logout():
     session.clear()
@@ -316,27 +327,49 @@ def api_buy_shares():
 
 # --- LEADERBOARD ROUTES ---
 
+# --- LEADERBOARD ROUTES ---
+
 @app.route('/leaderboard')
 def leaderboard():
     async def get_leaders():
         async with aiosqlite.connect(DB_NAME) as db_conn:
             db_conn.row_factory = aiosqlite.Row
-            async with db_conn.execute("SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 10") as c:
-                richest = await c.fetchall()
-            async with db_conn.execute("SELECT user_id, max_floor FROM users ORDER BY max_floor DESC LIMIT 10") as c:
-                strongest = await c.fetchall()
+            
+            # 1. Richest (Grabbing username directly from users table)
             async with db_conn.execute("""
-                SELECT user_id, COUNT(*) as item_count 
-                FROM inventory 
-                GROUP BY user_id 
+                SELECT username, balance FROM users 
+                WHERE username IS NOT NULL 
+                ORDER BY balance DESC LIMIT 10
+            """) as c:
+                richest = await c.fetchall()
+            
+            # 2. Strongest (Grabbing username directly from users table)
+            async with db_conn.execute("""
+                SELECT username, max_floor FROM users 
+                WHERE username IS NOT NULL 
+                ORDER BY max_floor DESC LIMIT 10
+            """) as c:
+                strongest = await c.fetchall()
+                
+            # 3. Collectors (JOINING users and inventory to count items by name)
+            async with db_conn.execute("""
+                SELECT u.username, COUNT(i.item_id) as item_count 
+                FROM users u
+                JOIN inventory i ON u.user_id = i.user_id 
+                WHERE u.username IS NOT NULL
+                GROUP BY u.user_id 
                 ORDER BY item_count DESC LIMIT 10
             """) as c:
                 collectors = await c.fetchall()
+                
             return richest, strongest, collectors
 
     richest, strongest, collectors = run_async(get_leaders())
-    return render_template('leaderboard.html', richest=richest, strongest=strongest, collectors=collectors)
-
+    
+    return render_template('leaderboard.html', 
+                           richest=richest, 
+                           strongest=strongest, 
+                           collectors=collectors)
 # --- START THE ENGINE ---
 
 if __name__ == '__main__':
