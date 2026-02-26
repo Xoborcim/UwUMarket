@@ -99,5 +99,20 @@
             </div>
         </div>
     </div>
+    <script>
+        // Live Gold Counter
+        async function fetchLiveGold() {
+            try {
+                const response = await fetch('/api/gold');
+                const data = await response.json();
+                if (data.success) {
+                    const formattedGold = data.gold.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    document.getElementById('gold-counter').innerText = '💰 $' + formattedGold;
+                }
+            } catch (error) {}
+        }
+        fetchLiveGold();
+        setInterval(fetchLiveGold, 10000);
+    </script>
 </body>
 </html> 
