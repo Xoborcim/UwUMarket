@@ -39,14 +39,27 @@
     </style>
 </head>
 <body>
-    <<div style="display: flex; gap: 30px; align-items: center;">
+
+    <nav>
+        <div style="display: flex; gap: 30px; align-items: center;">
             <a href="/market" class="logo">Polyville</a>
             <a href="/exchange" style="color: white; text-decoration: none; font-weight: 600;">Exchange 📈</a>
             <a href="/town" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Town Hall</a>
             <a href="/market" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Market</a>
             <a href="/lootbox" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Lootboxes</a>
-            <a href="/inventory" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Inventory</a>            
+            <a href="/inventory" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Inventory</a>
+            <a href="/leaderboard" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Leaderboard</a>
+            
         </div>
+        <div class="user-status">
+            <a href="/profile/{{ session['user_id'] }}" class="user-info">
+                <span>👤 <strong>{{ session['username'] }}</strong></span>
+                <span style="color: #475569;">|</span>
+                <span id="gold-counter" style="color: #f1c40f; font-weight: bold; font-family: monospace; font-size: 1.1em;">💰 Loading...</span>
+            </a>
+            <a href="/logout" style="color: var(--text-muted); font-size: 0.8rem; text-decoration: none;">Logout</a>
+        </div>
+    </nav>
 
     <div class="container">
         <h1 style="text-align:center; font-size: 3rem; margin-bottom: 50px;">The Hall of Fame</h1>
