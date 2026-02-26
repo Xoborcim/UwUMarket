@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polyville | Global Market</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f0f1b;
+            --card-bg: #16213e;
+            --accent-color: #e94560;
+            --text-main: #ffffff;
+            --text-muted: #94a3b8;
+            --border-color: #1e293b;
+            
+            /* Tier Colors */
+            --common: #b2bec3;
+            --uncommon: #2ecc71;
+            --rare: #3498db;
+            --epic: #9b59b6;
+            --legendary: #f1c40f;
+            --mythic: #e74c3c;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+
+        /* --- NAVIGATION BAR --- */
+        nav {
+            background: #1a1a2e;
+            padding: 1rem 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-weight: 800;
+            font-size: 1.5rem;
+            color: var(--accent-color);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .user-status {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .login-btn {
+            background: #5865F2; /* Discord Blue */
+            color: white;
+            text-decoration: none;
+            padding: 8px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+
+        .user-info {
+            background: var(--border-color);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* --- MAIN LAYOUT --- */
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        /* --- MARKET GRID --- */
+        .market-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 30px;
+        }
+
+        .item-card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .item-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            border-color: var(--accent-color);
+        }
+
+        .image-wrapper {
+            width: 100%;
+            height: 220px;
+            background: #1a1a2e;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .item-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            padding: 20px;
+        }
+
+        .tier-badge {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            padding: 4px 12px;
+            border-radius: 5px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: rgba(0,0,0,0.7);
+        }
+
+        .item-content {
+            padding: 20px;
+            flex-grow: 1;
+            text-align: center;
+        }
+
+        .item-name {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin: 0 0 5px 0;
+        }
+
+        .seller-info {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+        }
+
+        .card-footer {
+            padding: 0 20px 20px 20px;
+        }
+
+        .price-display {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #2ecc71;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .buy-button {
+            width: 100%;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: 800;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: filter 0.2s;
+        }
+
+        .buy-button:hover {
+            filter: brightness(1.2);
+        }
+
+        /* DYNAMIC TIER STYLING */
+        .tier-Common { border-top: 4px solid var(--common); }
+        .tier-Uncommon { border-top: 4px solid var(--uncommon); }
+        .tier-Rare { border-top: 4px solid var(--rare); }
+        .tier-Epic { border-top: 4px solid var(--epic); }
+        .tier-Legendary { border-top: 4px solid var(--legendary); box-shadow: 0 0 15px rgba(241, 196, 15, 0.1); }
+        .tier-Mythic { border-top: 4px solid var(--mythic); animation: pulse-red 2s infinite; }
+
+        .text-Common { color: var(--common); }
+        .text-Uncommon { color: var(--uncommon); }
+        .text-Rare { color: var(--rare); }
+        .text-Epic { color: var(--epic); }
+        .text-Legendary { color: var(--legendary); }
+        .text-Mythic { color: var(--mythic); }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(231, 76, 60, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+        }
+
+        .empty-state { text-align: center; padding: 100px 20px; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div style="display: flex; gap: 30px; align-items: center;">
+            <a href="/market" class="logo">Polyville</a>
+            <a href="/town" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Town Hall 🏛️</a>
+            <a href="/market" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Market</a>
+            <a href="/inventory" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Inventory 🎒</a>
+            <a href="/exchange" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Exchange 📈</a>
+            <a href="/leaderboard" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Leaderboard</a>
+            <a href="/dungeon" style="color: white; text-decoration: none; font-weight: 600;">Dungeon 🏰</a>
+            </div>
+        <div class="user-status">
+            {% if session.get('user_id') %}
+                <a href="/profile/{{ session['user_id'] }}" class="user-info" style="text-decoration: none; color: white; cursor: pointer;">
+                <span>👤 <strong>{{ session['username'] }}</strong></span>
+                <span style="color: #475569;">|</span>
+                <span id="gold-counter" style="color: #f1c40f; font-weight: bold; font-family: monospace; font-size: 1.1em;">💰 Loading...</span>
+                </a>
+                <a href="/logout" style="color: var(--text-muted); font-size: 0.8rem; text-decoration: none;">Logout</a>
+            {% else %}
+                <a href="/login" class="login-btn">Login with Discord</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div class="container">
+        <header>
+            <h1>Item Marketplace</h1>
+            <p style="color: var(--text-muted)">Global Player-to-Player Trading</p>
+        </header>
+
+        {% if message %}
+            <div style="padding: 15px; margin-bottom: 30px; border-radius: 8px; text-align: center; font-weight: bold; color: white; background-color: {% if success %}#2ecc71{% else %}#e74c3c{% endif %}; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                {{ message }}
+            </div>
+        {% endif %}
+
+        {% if not items %}
+            <div class="empty-state">
+                <h2>📦 The market is currently empty.</h2>
+                <p>Check back later or list an item via Discord!</p>
+            </div>
+        {% else %}
+            <div class="market-grid">
+                {% for item in items %}
+                <div class="item-card tier-{{ item['tier'] }}">
+                    <div class="image-wrapper">
+                        <div class="tier-badge text-{{ item['tier'] }}">{{ item['tier'] }}</div>
+                        <img src="/images/{{ item['set_name'] }}/{{ item['tier'] }}/{{ item['item_name'] }}.png" 
+                             class="item-image"
+                             alt="{{ item['item_name'] }}"
+                             onerror="this.src='https://via.placeholder.com/300?text=No+Image'">
+                    </div>
+
+                    <div class="item-content">
+                        <div class="item-name">{{ item['item_name'] }}</div>
+                        <div class="seller-info">Sold by <code>{{ item['user_id'] }}</code></div>
+                    </div>
+
+                    <div class="card-footer">
+                        <span class="price-display">${{ "{:,.2f}".format(item['list_price']) }}</span>
+                        
+                        <form action="/buy/{{ item['item_id'] }}" method="POST">
+                            {% if session.get('user_id') %}
+                                <button type="submit" class="buy-button">Purchase</button>
+                            {% else %}
+                                <button type="button" class="buy-button" style="background: #475569; cursor: not-allowed;" disabled>Login to Buy</button>
+                            {% endif %}
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+
+    {% if session.get('user_id') %}
+    <script>
+        async function fetchLiveGold() {
+            try {
+                const response = await fetch('/api/gold');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const formattedGold = data.gold.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    document.getElementById('gold-counter').innerText = '💰 $' + formattedGold;
+                }
+            } catch (error) {
+                console.error("Failed to fetch gold:", error);
+            }
+        }
+
+        fetchLiveGold();
+        setInterval(fetchLiveGold, 3000);
+    </script>
+    {% endif %}
+
+</body>
+</html>

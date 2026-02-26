@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polyville | Hall of Fame</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f0f1b; --card-bg: #16213e; --accent-color: #e94560;
+            --text-main: #ffffff; --text-muted: #94a3b8; --border-color: #1e293b;
+            --gold: #f1c40f; --silver: #bdc3c7; --bronze: #cd7f32;
+        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; }
+        nav { background: #1a1a2e; padding: 1rem 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); }
+        .logo { font-weight: 800; font-size: 1.5rem; color: var(--accent-color); text-decoration: none; text-transform: uppercase; letter-spacing: 2px;}
+        .container { max-width: 1100px; margin: 40px auto; padding: 0 20px; }
+
+        .leader-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; }
+        .leader-section { background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); padding: 25px; }
+        .section-title { font-size: 1.5rem; font-weight: 800; margin-bottom: 20px; text-align: center; color: var(--accent-color); border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+
+        /* LIST STYLING */
+        .entry { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #1e293b; transition: 0.2s; text-decoration: none; color: white;}
+        .entry:hover { background: rgba(255,255,255,0.05); }
+        .rank { width: 30px; font-weight: 800; font-size: 1.1rem; }
+        .rank-1 { color: var(--gold); }
+        .rank-2 { color: var(--silver); }
+        .rank-3 { color: var(--bronze); }
+        
+        .name { flex: 1; margin-left: 10px; font-weight: 600; }
+        .value { font-family: monospace; font-weight: 800; color: var(--gold); }
+
+        .podium { display: flex; justify-content: center; align-items: flex-end; gap: 10px; margin-bottom: 40px; height: 150px; }
+        .podium-slot { width: 100px; background: var(--border-color); border-radius: 10px 10px 0 0; text-align: center; padding: 10px; position: relative; }
+        .podium-1 { height: 120px; border: 2px solid var(--gold); background: linear-gradient(to top, #16213e, #2c3e50); }
+        .podium-2 { height: 90px; border: 2px solid var(--silver); }
+        .podium-3 { height: 70px; border: 2px solid var(--bronze); }
+    </style>
+</head>
+<body>
+    <nav>
+        <div style="display: flex; gap: 30px; align-items: center;">
+            <a href="/market" class="logo">Polyville</a>
+            <a href="/leaderboard" style="color: white; text-decoration: none; font-weight: 600;">Leaderboard 🏆</a>
+            <a href="/exchange" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Exchange</a>
+            <a href="/town" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Town Hall</a>
+            <a href="/market" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Market</a>
+            <a href="/dungeon" style="color: white; text-decoration: none; font-weight: 600;">Dungeon 🏰</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1 style="text-align:center; font-size: 3rem; margin-bottom: 50px;">The Hall of Fame</h1>
+
+        <div class="leader-grid">
+            <div class="leader-section">
+                <div class="section-title">💰 Richest Citizens</div>
+                {% for p in richest %}
+                <a href="/profile/{{ p.user_id }}" class="entry">
+                    <span class="rank rank-{{ loop.index }}">{{ loop.index }}</span>
+                    <span class="name">ID: {{ p.user_id | string | truncate(10) }}</span>
+                    <span class="value">${{ "{:,.0f}".format(p.balance) }}</span>
+                </a>
+                {% endfor %}
+            </div>
+
+            <div class="leader-section">
+                <div class="section-title">⚔️ Top Climbers</div>
+                {% for p in strongest %}
+                <a href="/profile/{{ p.user_id }}" class="entry">
+                    <span class="rank rank-{{ loop.index }}">{{ loop.index }}</span>
+                    <span class="name">ID: {{ p.user_id | string | truncate(10) }}</span>
+                    <span class="value">Floor {{ p.max_floor }}</span>
+                </a>
+                {% endfor %}
+            </div>
+
+            <div class="leader-section">
+                <div class="section-title">📦 Master Collectors</div>
+                {% for p in collectors %}
+                <a href="/profile/{{ p.user_id }}" class="entry">
+                    <span class="rank rank-{{ loop.index }}">{{ loop.index }}</span>
+                    <span class="name">ID: {{ p.user_id | string | truncate(10) }}</span>
+                    <span class="value">{{ p.item_count }} Items</span>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

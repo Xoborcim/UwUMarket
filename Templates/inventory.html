@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polyville | My Inventory</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f0f1b; --card-bg: #16213e; --accent-color: #e94560;
+            --text-main: #ffffff; --text-muted: #94a3b8; --border-color: #1e293b;
+            --common: #b2bec3; --uncommon: #2ecc71; --rare: #3498db; 
+            --epic: #9b59b6; --legendary: #f1c40f; --mythic: #e74c3c;
+        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; }
+        nav { background: #1a1a2e; padding: 1rem 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100; }
+        .logo { font-weight: 800; font-size: 1.5rem; color: var(--accent-color); text-decoration: none; text-transform: uppercase; letter-spacing: 2px;}
+        .user-info { background: var(--border-color); padding: 8px 15px; border-radius: 20px; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; text-decoration: none; color: white; cursor: pointer; }
+        
+        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+        header { text-align: center; margin-bottom: 50px; }
+        header h1 { font-size: 3rem; margin-bottom: 10px; }
+
+        .inventory-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 30px; }
+        
+        .item-card { background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); overflow: hidden; transition: transform 0.2s; position: relative; display: flex; flex-direction: column; }
+        .item-card:hover { transform: translateY(-5px); border-color: var(--accent-color); }
+        .image-wrapper { width: 100%; height: 200px; background: #1a1a2e; display: flex; align-items: center; justify-content: center; position: relative; }
+        .item-image { width: 100%; height: 100%; object-fit: contain; padding: 20px; }
+        
+        .tier-badge { position: absolute; top: 10px; right: 10px; padding: 4px 10px; border-radius: 5px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; background: rgba(0,0,0,0.7); }
+        .item-content { padding: 20px; text-align: center; flex-grow: 1; }
+        .item-name { font-size: 1.2rem; font-weight: 700; margin-bottom: 5px; }
+        
+        .button-group { display: flex; gap: 10px; margin-top: 15px; }
+        .sell-button { flex: 1; background: #3498db; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; cursor: pointer; text-transform: uppercase; transition: filter 0.2s; }
+        .sell-button:hover { filter: brightness(1.2); }
+        .scrap-button { flex: 1; background: #e74c3c; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; cursor: pointer; text-transform: uppercase; transition: filter 0.2s; }
+        .scrap-button:hover { filter: brightness(1.2); }
+
+        /* Dynamic Tiers */
+        .tier-Common { border-top: 4px solid var(--common); }
+        .tier-Uncommon { border-top: 4px solid var(--uncommon); }
+        .tier-Rare { border-top: 4px solid var(--rare); }
+        .tier-Epic { border-top: 4px solid var(--epic); }
+        .tier-Legendary { border-top: 4px solid var(--legendary); }
+        .tier-Mythic { border-top: 4px solid var(--mythic); box-shadow: 0 0 15px rgba(231, 76, 60, 0.2); }
+        .text-Common { color: var(--common); }
+        .text-Uncommon { color: var(--uncommon); }
+        .text-Rare { color: var(--rare); }
+        .text-Epic { color: var(--epic); }
+        .text-Legendary { color: var(--legendary); }
+        .text-Mythic { color: var(--mythic); }
+
+        /* --- MODAL POPUP STYLES --- */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8); z-index: 1000; align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background: var(--card-bg); padding: 30px; border-radius: 15px; border: 1px solid var(--border-color);
+            width: 350px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        .modal-content h2 { color: var(--accent-color); margin-top: 0; }
+        .price-input {
+            width: 100%; padding: 12px; margin: 20px 0; background: #0f0f1b; border: 1px solid var(--border-color);
+            color: white; border-radius: 8px; font-size: 1.2rem; text-align: center; box-sizing: border-box;
+        }
+        .modal-buttons { display: flex; gap: 10px; }
+        .btn-cancel { flex: 1; background: #475569; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .btn-confirm { flex: 1; background: #2ecc71; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        
+        .empty-state { text-align: center; padding: 100px 20px; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div style="display: flex; gap: 30px; align-items: center;">
+            <a href="/market" class="logo">Polyville</a>
+            <a href="/town" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Town Hall 🏛️</a>
+            <a href="/market" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Market</a>
+            <a href="/exchange" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Exchange 📈</a>
+            <a href="/leaderboard" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Leaderboard</a>
+            <a href="/dungeon" style="color: white; text-decoration: none; font-weight: 600;">Dungeon 🏰</a>
+
+            </div>
+        <div class="user-status">
+            <a href="/profile/{{ session['user_id'] }}" class="user-info">
+                <span>👤 <strong>{{ session['username'] }}</strong></span>
+                <span style="color: #475569;">|</span>
+                <span id="gold-counter" style="color: #f1c40f; font-weight: bold; font-family: monospace; font-size: 1.1em;">💰 Loading...</span>
+            </a>
+            <a href="/logout" style="color: var(--text-muted); font-size: 0.8rem; text-decoration: none;">Logout</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <header>
+            <h1>My Storage</h1>
+            <p style="color: var(--text-muted)">Manage your unequipped items and list them on the market.</p>
+        </header>
+
+        <div id="notification-banner" style="display: none; padding: 15px; margin-bottom: 30px; border-radius: 8px; text-align: center; font-weight: bold; color: white;"></div>
+
+        {% if not items %}
+            <div class="empty-state">
+                <h2>🎒 Your inventory is empty.</h2>
+                <p>Go to the Lootbox page to unbox some gear!</p>
+            </div>
+        {% else %}
+            <div class="inventory-grid">
+                {% for item in items %}
+                <div class="item-card tier-{{ item.get('tier', 'Common') }}" id="card-{{ item['item_id'] }}">
+                    <div class="image-wrapper">
+                        <div class="tier-badge text-{{ item.get('tier', 'Common') }}">{{ item.get('tier', 'Common') }}</div>
+                        <img src="/images/{{ item.get('set_name', 'Base_Set') }}/{{ item.get('tier', 'Common') }}/{{ item['item_name'] }}.png" 
+                             class="item-image" onerror="this.src='https://via.placeholder.com/300?text=No+Image'">
+                    </div>
+                    <div class="item-content">
+                        <div class="item-name">{{ item['item_name'] }}</div>
+                        <div style="color: #64748b; font-size: 0.8rem;">Item ID: {{ item['item_id'] }}</div>
+                        
+                        <div class="button-group">
+                            <button class="sell-button" onclick='openModal({{ item["item_id"] | tojson }}, {{ item["item_name"] | tojson }})'>Sell</button>
+                            <button class="scrap-button" onclick='scrapItem({{ item["item_id"] }})'>Scrap</button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-overlay" id="sellModal">
+        <div class="modal-content">
+            <h2>List Item</h2>
+            <p style="color: var(--text-muted); margin-bottom: 5px;">How much do you want to sell your <br><strong id="modal-item-name" style="color: white;"></strong> for?</p>
+            
+            <input type="number" id="sell-price" class="price-input" placeholder="Price ($)" min="0.01" step="0.01">
+            <input type="hidden" id="sell-item-id">
+            
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+                <button class="btn-confirm" id="confirm-btn" onclick="submitSale()">Confirm Sale</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Live Gold Counter
+        async function fetchLiveGold() {
+            try {
+                const response = await fetch('/api/gold');
+                const data = await response.json();
+                if (data.success) {
+                    const formattedGold = data.gold.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    document.getElementById('gold-counter').innerText = '💰 $' + formattedGold;
+                }
+            } catch (error) {}
+        }
+        fetchLiveGold();
+        setInterval(fetchLiveGold, 10000);
+
+        // --- SCRAP LOGIC ---
+        async function scrapItem(itemId) {
+            if (!confirm("Are you sure you want to scrap this item? It will be destroyed forever in exchange for raw gold.")) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/scrap_item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: itemId })
+                });
+                
+                const result = await response.json();
+                const banner = document.getElementById('notification-banner');
+                
+                banner.innerText = result.message;
+                banner.style.display = 'block';
+
+                if (result.success) {
+                    banner.style.backgroundColor = '#2ecc71';
+                    // Hide the card
+                    document.getElementById('card-' + itemId).style.display = 'none';
+                    // Force the gold counter to update immediately
+                    fetchLiveGold();
+                } else {
+                    banner.style.backgroundColor = '#e74c3c';
+                }
+            } catch (error) {
+                alert("Server error occurred while scrapping.");
+            }
+        }
+
+        // --- MODAL LOGIC ---
+        function openModal(itemId, itemName) {
+            document.getElementById('modal-item-name').innerText = itemName;
+            document.getElementById('sell-item-id').value = itemId;
+            document.getElementById('sell-price').value = ""; 
+            document.getElementById('sellModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('sellModal').style.display = 'none';
+        }
+
+        async function submitSale() {
+            const itemId = document.getElementById('sell-item-id').value;
+            const price = document.getElementById('sell-price').value;
+            const confirmBtn = document.getElementById('confirm-btn');
+            
+            if (!price || price <= 0) {
+                alert("Please enter a valid price above $0.");
+                return;
+            }
+
+            confirmBtn.innerText = "Processing...";
+            confirmBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/sell_item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: itemId, price: price })
+                });
+                
+                const result = await response.json();
+                closeModal();
+                
+                const banner = document.getElementById('notification-banner');
+                banner.innerText = result.message;
+                banner.style.display = 'block';
+
+                if (result.success) {
+                    banner.style.backgroundColor = '#2ecc71';
+                    document.getElementById('card-' + itemId).style.display = 'none';
+                } else {
+                    banner.style.backgroundColor = '#e74c3c';
+                }
+
+            } catch (error) {
+                alert("Server error occurred.");
+            } finally {
+                confirmBtn.innerText = "Confirm Sale";
+                confirmBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
