@@ -128,21 +128,30 @@ def logout():
     session.clear()
     return redirect(url_for('market'))
 
-@app.route('/profile/<username>') # Changed <int:user_id> to <username>
-def profile(username):
-    async def get_user_by_name(name):
+@app.route('/profile/<identifier>')
+def profile(identifier):
+    async def get_user_smart(val):
         async with aiosqlite.connect(DB_NAME) as db_conn:
             db_conn.row_factory = aiosqlite.Row
-            # Search by username instead of ID
-            async with db_conn.execute("SELECT * FROM users WHERE username = ?", (name,)) as cursor:
-                return await cursor.fetchone()
+            
+            # 1. Try searching by user_id first (if it's a number)
+            if val.isdigit():
+                async with db_conn.execute("SELECT * FROM users WHERE user_id = ?", (int(val),)) as c:
+                    user = await c.fetchone()
+                    if user: return user
+            
+            # 2. If not found or not a number, try searching by username
+            async with db_conn.execute("SELECT * * FROM users WHERE username = ?", (val,)) as c:
+                return await c.fetchone()
 
-    player = run_async(get_user_by_name(username))
-    if not player:
-        return "<h1>404: Player not found in market.db</h1>", 404
+    player = run_async(get_user_smart(identifier))
     
-    # Pass the user_id from the database to the template so inventory still works
-    return render_template('profile.html', player=player, user_id=player['user_id'])
+    if not player:
+        return f"<h1>404: Resident '{identifier}' not found in Polyville</h1>", 404
+    
+    # We pass 'player' to the HTML so all your stats (balance, etc.) show up
+    return render_template('profile.html', player=player)
+
 # --- MARKET ROUTES ---
 
 @app.route('/market')
