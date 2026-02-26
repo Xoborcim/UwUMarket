@@ -68,33 +68,33 @@
             <div class="leader-section">
                 <div class="section-title">💰 Richest Citizens</div>
                 {% for user in richest %}
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    <td>{{ user['username'] or "Unknown Resident" }}</td>
-                    <td>${{ "{:,.2f}".format(user['balance']) }}</td>
-                </tr>
+                <a href="/profile/{{ user['username'] or user['user_id'] }}" class="entry">
+                    <span class="rank rank-{{ loop.index if loop.index <= 3 else 'other' }}">#{{ loop.index }}</span>
+                    <span class="name">{{ user['username'] or user['user_id'] }}</span>
+                    <span class="value">${{ "{:,.2f}".format(user['balance']) }}</span>
+                </a>
                 {% endfor %}
             </div>
 
             <div class="leader-section">
                 <div class="section-title">⚔️ Top Climbers</div>
                 {% for user in strongest %}
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    <td>{{ user['username'] or "Unknown Resident" }}</td>
-                    <td>${{ "{:,.2f}".format(user['balance']) }}</td>
-                </tr>
+                <a href="/profile/{{ user['username'] or user['user_id'] }}" class="entry">
+                    <span class="rank rank-{{ loop.index if loop.index <= 3 else 'other' }}">#{{ loop.index }}</span>
+                    <span class="name">{{ user['username'] or user['user_id'] }}</span>
+                    <span class="value">Floor {{ user['max_floor'] }}</span>
+                </a>
                 {% endfor %}
             </div>
 
             <div class="leader-section">
                 <div class="section-title">📦 Master Collectors</div>
                 {% for user in collectors %}
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    <td>{{ user['username'] or "Unknown Resident" }}</td>
-                    <td>${{ "{:,.2f}".format(user['balance']) }}</td>
-                </tr>
+                <a href="/profile/{{ user['username'] or user['user_id'] }}" class="entry">
+                    <span class="rank rank-{{ loop.index if loop.index <= 3 else 'other' }}">#{{ loop.index }}</span>
+                    <span class="name">{{ user['username'] or user['user_id'] }}</span>
+                    <span class="value">{{ user['item_count'] }} Items</span>
+                </a>
                 {% endfor %}
             </div>
         </div>
