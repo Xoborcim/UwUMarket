@@ -42,7 +42,13 @@ async def initialize_db():
             tier TEXT, 
             is_listed INTEGER DEFAULT 0, 
             list_price REAL DEFAULT 0.0,
-            set_name TEXT DEFAULT 'Base_Set'
+            set_name TEXT DEFAULT 'Base_Set',
+            item_type TEXT DEFAULT 'Misc',
+            slot TEXT,
+            atk_bonus INTEGER DEFAULT 0,
+            def_bonus INTEGER DEFAULT 0,
+            int_bonus INTEGER DEFAULT 0,
+            is_equipped INTEGER DEFAULT 0
         )''')
         
         # 4. TOWN SIMULATION TABLE
@@ -72,7 +78,13 @@ async def initialize_db():
             ("users", "starter_weapon", "TEXT DEFAULT 'Rusty Dagger'"),
             ("users", "rpg_class", "TEXT DEFAULT 'Fighter'"),
             ("users", "max_floor", "INTEGER DEFAULT 0"),
-            ("inventory", "set_name", "TEXT DEFAULT 'Base_Set'")
+            ("inventory", "set_name", "TEXT DEFAULT 'Base_Set'"),
+            ("inventory", "item_type", "TEXT DEFAULT 'Misc'"),
+            ("inventory", "slot", "TEXT"),
+            ("inventory", "atk_bonus", "INTEGER DEFAULT 0"),
+            ("inventory", "def_bonus", "INTEGER DEFAULT 0"),
+            ("inventory", "int_bonus", "INTEGER DEFAULT 0"),
+            ("inventory", "is_equipped", "INTEGER DEFAULT 0")
         ]
         
         for table, col, dtype in columns:
@@ -379,10 +391,76 @@ async def draw_lottery_winner():
         return winner_id, net
 
 # --- INVENTORY & P2P MARKET ---
-async def add_item(user_id, item_name, tier, set_name):
+async def add_item(
+    user_id,
+    item_name,
+    tier,
+    set_name,
+    item_type="Misc",
+    slot=None,
+    atk_bonus=0,
+    def_bonus=0,
+    int_bonus=0,
+):
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("INSERT INTO inventory (user_id, item_name, tier, set_name) VALUES (?, ?, ?, ?)", (user_id, item_name, tier, set_name))
+        await db.execute(
+            """
+            INSERT INTO inventory
+            (user_id, item_name, tier, set_name, item_type, slot, atk_bonus, def_bonus, int_bonus)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, item_name, tier, set_name, item_type, slot, int(atk_bonus), int(def_bonus), int(int_bonus)),
+        )
         await db.commit()
+
+async def get_equipped_gear(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT *
+            FROM inventory
+            WHERE user_id = ? AND is_listed = 0 AND is_equipped = 1
+            """,
+            (user_id,),
+        ) as cursor:
+            return await cursor.fetchall()
+
+async def equip_inventory_item(user_id, item_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM inventory WHERE item_id = ? AND user_id = ? AND is_listed = 0",
+            (item_id, user_id),
+        ) as cursor:
+            item = await cursor.fetchone()
+
+        if not item:
+            return False, "Item not found, not owned by you, or currently listed."
+
+        slot = item["slot"]
+        if not slot:
+            return False, "That item cannot be equipped."
+
+        await db.execute(
+            "UPDATE inventory SET is_equipped = 0 WHERE user_id = ? AND slot = ?",
+            (user_id, slot),
+        )
+        await db.execute(
+            "UPDATE inventory SET is_equipped = 1 WHERE user_id = ? AND item_id = ?",
+            (user_id, item_id),
+        )
+        await db.commit()
+        return True, f"Equipped **{item['item_name']}** as your **{slot}**."
+
+async def unequip_slot(user_id, slot):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "UPDATE inventory SET is_equipped = 0 WHERE user_id = ? AND slot = ?",
+            (user_id, slot),
+        )
+        await db.commit()
+        return True, f"Unequipped your **{slot}** slot."
 
 async def scrap_item(user_id, item_id, scrap_value):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -418,7 +496,11 @@ async def list_item_on_market(user_id, item_id, price):
             item = await cursor.fetchone()
             
         if not item: return False, "Item not found or already listed."
-        await db.execute("UPDATE inventory SET is_listed = 1, list_price = ? WHERE item_id = ?", (round(price, 2), item_id))
+        # Listing an item implicitly unequips it.
+        await db.execute(
+            "UPDATE inventory SET is_listed = 1, list_price = ?, is_equipped = 0 WHERE item_id = ?",
+            (round(price, 2), item_id),
+        )
         await db.commit()
         return True, "Item listed successfully."
 
@@ -460,7 +542,11 @@ async def buy_market_item(buyer_id, item_id):
             
             await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (price, buyer_id))
             await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (price, seller_id))
-            await db.execute("UPDATE inventory SET user_id = ?, is_listed = 0, list_price = 0.0 WHERE item_id = ?", (buyer_id, item_id))
+            # Ownership transfer should not auto-equip for the buyer.
+            await db.execute(
+                "UPDATE inventory SET user_id = ?, is_listed = 0, list_price = 0.0, is_equipped = 0 WHERE item_id = ?",
+                (buyer_id, item_id),
+            )
             await db.commit()
             return True, f"You bought {item['item_name']} for ${price:,.2f}!"
         except Exception as e: return False, str(e)

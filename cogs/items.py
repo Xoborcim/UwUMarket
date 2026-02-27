@@ -5,6 +5,7 @@ import database as db
 import random
 import os
 import aiosqlite
+import json
 
 TIER_WEIGHTS = {
     "Common": 50, "Uncommon": 25, "Rare": 15, 
@@ -215,10 +216,44 @@ class Items(commands.Cog):
         valid_weights = [TIER_WEIGHTS[t] for t in valid_tiers]
         rolled_tier = random.choices(valid_tiers, weights=valid_weights, k=1)[0]
         
-        item_name, filepath = self.get_random_item(set_name, rolled_tier)
+        result = self.get_random_item(set_name, rolled_tier)
+        if not result:
+            await db.update_balance(interaction.user.id, cost)
+            return await interaction.response.send_message("❌ Lootbox failed to generate an item. Your $500 was refunded.", ephemeral=True)
+        item_name, filepath = result
         
+        item_type = "Collectible"
+        slot = None
+        atk_bonus = def_bonus = int_bonus = 0
+        meta_path = os.path.join("lootboxes", set_name, "meta.json")
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                item_meta = None
+                if isinstance(meta, dict):
+                    item_meta = meta.get(item_name) or meta.get(item_name.lower())
+                if isinstance(item_meta, dict):
+                    item_type = item_meta.get("item_type", item_type)
+                    slot = item_meta.get("slot")
+                    atk_bonus = int(item_meta.get("atk_bonus", 0) or 0)
+                    def_bonus = int(item_meta.get("def_bonus", 0) or 0)
+                    int_bonus = int(item_meta.get("int_bonus", 0) or 0)
+            except Exception:
+                pass
+
         # Added Await!
-        await db.add_item(interaction.user.id, item_name, rolled_tier, set_name)
+        await db.add_item(
+            interaction.user.id,
+            item_name,
+            rolled_tier,
+            set_name,
+            item_type=item_type,
+            slot=slot,
+            atk_bonus=atk_bonus,
+            def_bonus=def_bonus,
+            int_bonus=int_bonus,
+        )
         
         embed = discord.Embed(title=f"🎁 {set_name.replace('_', ' ')} Lootbox!", description=f"You unboxed a **{rolled_tier}** item:\n### {item_name}", color=TIER_COLORS[rolled_tier])
         file = discord.File(filepath, filename="item.png")
@@ -293,9 +328,33 @@ class Items(commands.Cog):
         if not items: return await interaction.response.send_message("🎒 Your inventory is empty.", ephemeral=True)
         embed = discord.Embed(title="🎒 Your Inventory", color=0x2c3e50)
         desc = "Use `/view_item [ID]` to see the image, or `/market` to sell it.\n\n"
-        for item in items: desc += f"`ID: {item['item_id']}` | **{item['item_name']}** ({item['tier']})\n"
+        for item in items:
+            item_dict = dict(item)
+            eq = " ✅" if item_dict.get("is_equipped") else ""
+            slot = item_dict.get("slot")
+            slot_str = f" — *{slot}*" if slot else ""
+            desc += f"`ID: {item['item_id']}` | **{item['item_name']}** ({item['tier']}){slot_str}{eq}\n"
         embed.description = desc
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="equip", description="Equip a weapon/armor/mage item from your inventory (only one per slot).")
+    async def equip(self, interaction: discord.Interaction, item_id: int):
+        success, msg = await db.equip_inventory_item(interaction.user.id, item_id)
+        if success:
+            await interaction.response.send_message(f"✅ {msg}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+
+    @app_commands.command(name="unequip", description="Unequip a slot (weapon/armor/mage).")
+    async def unequip(self, interaction: discord.Interaction, slot: str):
+        slot = (slot or "").strip().lower()
+        if slot not in {"weapon", "armor", "mage"}:
+            return await interaction.response.send_message("❌ Slot must be one of: `weapon`, `armor`, `mage`.", ephemeral=True)
+        success, msg = await db.unequip_slot(interaction.user.id, slot)
+        if success:
+            await interaction.response.send_message(f"✅ {msg}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 
     @app_commands.command(name="view_item", description="Look at an item you own.")
     async def view_item(self, interaction: discord.Interaction, item_id: int):
