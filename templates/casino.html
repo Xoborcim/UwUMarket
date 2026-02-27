@@ -87,16 +87,48 @@
     .slots-reels {
         display: flex;
         justify-content: center;
-        gap: 12px;
+        gap: 16px;
         font-size: 3rem;
         padding: 24px;
-        background: #0f172a;
+        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
         border-radius: 12px;
         margin: 16px 0;
         min-height: 100px;
         align-items: center;
+        border: 2px solid var(--border-color);
+        box-shadow: inset 0 2px 12px rgba(0,0,0,0.4);
     }
-    .slots-reels .reel { transition: transform 0.1s; }
+    .slots-reels .reel-wrap {
+        width: 72px;
+        height: 80px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #020617;
+        border-radius: 8px;
+        border: 2px solid #334155;
+    }
+    .slots-reels .reel {
+        transition: none;
+        display: block;
+        line-height: 1;
+    }
+    .slots-reels .reel.spinning {
+        animation: reel-blur 0.08s ease-in-out infinite;
+    }
+    .slots-reels .reel.stop {
+        animation: reel-stop 0.3s ease-out;
+    }
+    @keyframes reel-blur {
+        0%, 100% { transform: translateY(0) scale(1); opacity: 1; }
+        50% { transform: translateY(-2px) scale(1.02); opacity: 0.9; }
+    }
+    @keyframes reel-stop {
+        0% { transform: scale(1.15); }
+        60% { transform: scale(0.97); }
+        100% { transform: scale(1); }
+    }
     /* Roulette */
     .roulette-choice { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
     .roulette-choice button {
@@ -270,6 +302,33 @@
         display: flex;
         flex-direction: column;
     }
+    .plinko-pegs {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        pointer-events: none;
+        z-index: 1;
+    }
+    .plinko-peg-row {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 7%;
+        margin-top: -3.5%;
+    }
+    .plinko-peg {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 30% 30%, #94a3b8, #475569);
+        border: 1px solid #334155;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+        position: absolute;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
     .plinko-chip {
         position: absolute;
         width: 32px;
@@ -347,7 +406,9 @@
                 <button type="button" class="btn-casino btn-spin" id="slots-spin">Spin</button>
             </div>
             <div class="slots-reels" id="slots-reels">
-                <span class="reel">?</span><span class="reel">?</span><span class="reel">?</span>
+                <div class="reel-wrap"><span class="reel" data-reel="0">?</span></div>
+                <div class="reel-wrap"><span class="reel" data-reel="1">?</span></div>
+                <div class="reel-wrap"><span class="reel" data-reel="2">?</span></div>
             </div>
             <div class="game-result" id="slots-result"></div>
             <div class="msg-err" id="slots-err"></div>
@@ -475,6 +536,7 @@
                 <button type="button" class="btn-casino btn-spin" id="plinko-drop">Drop Chip</button>
             </div>
             <div class="plinko-drop-zone" id="plinko-drop-zone">
+                <div class="plinko-pegs" id="plinko-pegs"></div>
                 <div class="plinko-chip" id="plinko-chip" style="display: none;"></div>
                 <div class="plinko-slots-row plinko-board" id="plinko-board">
                     <span class="plinko-slot" data-idx="0">10x</span>
@@ -524,35 +586,89 @@
             tab.classList.add('active');
             const game = tab.getAttribute('data-game');
             document.getElementById('panel-' + game).classList.add('active');
+            if (game === 'plinko') buildPlinkoPegs();
         });
     });
 
+    // Plinko pegs — triangular board (10 rows, row i has i+1 pegs)
+    function buildPlinkoPegs() {
+        const container = document.getElementById('plinko-pegs');
+        if (container.dataset.built) return;
+        container.dataset.built = '1';
+        const zoneHeight = 360;
+        const topPadding = 20;
+        const bottomPadding = 52;
+        const rowsHeight = zoneHeight - topPadding - bottomPadding;
+        for (let row = 0; row < 10; row++) {
+            const rowEl = document.createElement('div');
+            rowEl.className = 'plinko-peg-row';
+            const numPegs = row + 1;
+            const topPct = (topPadding + (row / 10) * rowsHeight) / zoneHeight * 100;
+            rowEl.style.top = topPct + '%';
+            for (let j = 0; j < numPegs; j++) {
+                const peg = document.createElement('div');
+                peg.className = 'plinko-peg';
+                const leftPct = ((j + 1) / (numPegs + 1)) * 100;
+                peg.style.left = leftPct + '%';
+                rowEl.appendChild(peg);
+            }
+            container.appendChild(rowEl);
+        }
+    }
+    if (document.getElementById('panel-plinko').classList.contains('active')) buildPlinkoPegs();
+
     // Slots
+    const SLOTS_EMOJIS = ['🍒', '🍋', '🍇', '🔔', '💎', '7️⃣'];
     document.getElementById('slots-spin').addEventListener('click', async () => {
         const bet = parseFloat(document.getElementById('slots-bet').value) || 0;
         const errEl = document.getElementById('slots-err');
         const resultEl = document.getElementById('slots-result');
+        const spinBtn = document.getElementById('slots-spin');
         resultEl.classList.remove('show', 'win', 'loss');
         errEl.textContent = '';
+        spinBtn.disabled = true;
+        const reelsEl = document.getElementById('slots-reels');
+        const reelNodes = reelsEl.querySelectorAll('.reel');
+        reelNodes.forEach(r => { r.classList.add('spinning'); r.classList.remove('stop'); });
         const res = await fetch('/api/casino/slots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bet }) });
         const data = await res.json();
         if (!data.success) {
             errEl.textContent = data.error || 'Failed';
+            reelNodes.forEach(r => r.classList.remove('spinning'));
+            spinBtn.disabled = false;
             return;
         }
-        const reelsEl = document.getElementById('slots-reels');
-        reelsEl.innerHTML = data.result.map(e => `<span class="reel">${e}</span>`).join('');
-        if (data.new_balance != null) updateGold(data.new_balance);
-        if (data.win === 'jackpot') {
-            resultEl.textContent = `JACKPOT! +$${data.net.toFixed(2)} (tax: $${data.tax.toFixed(2)})`;
-            resultEl.className = 'game-result show win';
-        } else if (data.win === 'pair') {
-            resultEl.textContent = `Two match! +$${data.net.toFixed(2)} (tax: $${data.tax.toFixed(2)})`;
-            resultEl.className = 'game-result show win';
-        } else {
-            resultEl.textContent = 'No match. Better luck next time!';
-            resultEl.className = 'game-result show loss';
-        }
+        const result = data.result;
+        const stopDelays = [600, 1000, 1400];
+        const intervals = [];
+        reelNodes.forEach((reel, i) => {
+            intervals[i] = setInterval(() => {
+                reel.textContent = SLOTS_EMOJIS[Math.floor(Math.random() * SLOTS_EMOJIS.length)];
+            }, 80);
+        });
+        stopDelays.forEach((delay, i) => {
+            setTimeout(() => {
+                clearInterval(intervals[i]);
+                reelNodes[i].textContent = result[i];
+                reelNodes[i].classList.remove('spinning');
+                reelNodes[i].classList.add('stop');
+                setTimeout(() => reelNodes[i].classList.remove('stop'), 300);
+            }, delay);
+        });
+        setTimeout(() => {
+            if (data.new_balance != null) updateGold(data.new_balance);
+            if (data.win === 'jackpot') {
+                resultEl.textContent = `JACKPOT! +$${data.net.toFixed(2)} (tax: $${data.tax.toFixed(2)})`;
+                resultEl.className = 'game-result show win';
+            } else if (data.win === 'pair') {
+                resultEl.textContent = `Two match! +$${data.net.toFixed(2)} (tax: $${data.tax.toFixed(2)})`;
+                resultEl.className = 'game-result show win';
+            } else {
+                resultEl.textContent = 'No match. Better luck next time!';
+                resultEl.className = 'game-result show loss';
+            }
+            spinBtn.disabled = false;
+        }, 1600);
     });
 
     // Roulette — standard European number colors
