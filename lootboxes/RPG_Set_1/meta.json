@@ -7,7 +7,7 @@
   "Steel Broadsword":       { "item_type": "Gear", "slot": "weapon", "atk_bonus": 11, "def_bonus": 0,  "int_bonus": 0 },
   "Battle Spear":           { "item_type": "Gear", "slot": "weapon", "atk_bonus": 10, "def_bonus": 1,  "int_bonus": 0 },
   "Guard's Breastplate":    { "item_type": "Gear", "slot": "armor",  "atk_bonus": 0,  "def_bonus": 12, "int_bonus": 0 },
-  "Acolyte's Relic":        { "item_type": "Gear", "slot": "mage",   "atk_bonus": 0,  "def_bonus": 0,  "int_bonus": 5 },
+  "Acolytes Relic":         { "item_type": "Gear", "slot": "mage",   "atk_bonus": 0,  "def_bonus": 0,  "int_bonus": 5 },
 
   "Knight's Longsword":     { "item_type": "Gear", "slot": "weapon", "atk_bonus": 18, "def_bonus": 0,  "int_bonus": 0 },
   "Storm Pike":             { "item_type": "Gear", "slot": "weapon", "atk_bonus": 17, "def_bonus": 2,  "int_bonus": 0 },
@@ -17,12 +17,12 @@
   "Crusader Greatblade":    { "item_type": "Gear", "slot": "weapon", "atk_bonus": 25, "def_bonus": 0,  "int_bonus": 0 },
   "Runic Waraxe":           { "item_type": "Gear", "slot": "weapon", "atk_bonus": 23, "def_bonus": 3,  "int_bonus": 0 },
   "Dragonbone Cuirass":     { "item_type": "Gear", "slot": "armor",  "atk_bonus": 0,  "def_bonus": 26, "int_bonus": 0 },
-  "Oracle's Diadem":        { "item_type": "Gear", "slot": "mage",   "atk_bonus": 0,  "def_bonus": 0,  "int_bonus": 12 },
+  "Oracles Diadem":         { "item_type": "Gear", "slot": "mage",   "atk_bonus": 0,  "def_bonus": 0,  "int_bonus": 12 },
 
-  "King's Claymore":        { "item_type": "Gear", "slot": "weapon", "atk_bonus": 33, "def_bonus": 0,  "int_bonus": 0 },
+  "Kings Claymore":         { "item_type": "Gear", "slot": "weapon", "atk_bonus": 33, "def_bonus": 0,  "int_bonus": 0 },
   "Sunforged Lance":        { "item_type": "Gear", "slot": "weapon", "atk_bonus": 30, "def_bonus": 4,  "int_bonus": 0 },
   "Bulwark of Dawn":        { "item_type": "Gear", "slot": "armor",  "atk_bonus": 0,  "def_bonus": 34, "int_bonus": 0 },
-  "Archsage's Halo":        { "item_type": "Gear", "slot": "mage",   "atk_bonus": 0,  "def_bonus": 0,  "int_bonus": 18 },
+  "Archsages Halo":         { "item_type": "Gear", "slot": "mage",   "atk_bonus": 0,  "def_bonus": 0,  "int_bonus": 18 },
 
   "Blade of the First Flame": { "item_type": "Gear", "slot": "weapon", "atk_bonus": 44, "def_bonus": 0,  "int_bonus": 0 },
   "Eclipse Glaive":         { "item_type": "Gear", "slot": "weapon", "atk_bonus": 41, "def_bonus": 3,  "int_bonus": 0 },
