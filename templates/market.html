@@ -146,8 +146,10 @@
                         <div class="tier-badge" style="color: var(--{{ item['tier']|lower }});">{{ item['tier'] }}</div>
                         {% if item.get('head_avatar_url') %}
                             <img src="{{ item.head_avatar_url }}" class="item-image" alt="item">
-                        {% else %}
+                        {% elif item.get('has_image') %}
                             <img src="/images/{{ item['set_name'] }}/{{ item['tier'] }}/{{ item['item_name'] }}.png" class="item-image" alt="item">
+                        {% else %}
+                            <img src="https://via.placeholder.com/300?text=No+Image" class="item-image" alt="item">
                         {% endif %}
                     </div>
 

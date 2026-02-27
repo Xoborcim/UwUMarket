@@ -73,12 +73,43 @@ def broadcast_update(event_type, data):
 def index():
     return redirect(url_for('market'))
 
+def _lootbox_image_exists(set_name: str, tier: str, name: str) -> bool:
+    """Case-insensitive existence check for lootbox PNGs."""
+    rel_dir = os.path.join(set_name, tier)
+    dir_path = os.path.join("lootboxes", rel_dir)
+    if not os.path.isdir(dir_path):
+        return False
+    target = f"{name}.png"
+    full_exact = os.path.join(dir_path, target)
+    if os.path.exists(full_exact):
+        return True
+    lower_target = target.lower()
+    for candidate in os.listdir(dir_path):
+        if candidate.lower() == lower_target:
+            return True
+    return False
+
+
 @app.route('/images/<path:filename>')
 def serve_image(filename):
-    fixed_filename = filename.replace(" ", "_")
-    if not os.path.exists(os.path.join('lootboxes', fixed_filename)):
-        fixed_filename = filename
-    return send_from_directory('lootboxes', fixed_filename)
+    # filename looks like "Base_Set/Common/My_Item.png"
+    fixed = filename.replace(" ", "_")
+    base_dir = "lootboxes"
+
+    rel_dir, fname = os.path.split(fixed)
+    search_dir = os.path.join(base_dir, rel_dir)
+    chosen_rel = fixed
+
+    if os.path.isdir(search_dir):
+        full_exact = os.path.join(search_dir, fname)
+        if not os.path.exists(full_exact):
+            lower_fname = fname.lower()
+            for entry in os.listdir(search_dir):
+                if entry.lower() == lower_fname:
+                    chosen_rel = os.path.join(rel_dir, entry) if rel_dir else entry
+                    break
+
+    return send_from_directory(base_dir, chosen_rel)
 
 @app.route('/api/gold')
 def api_gold():
@@ -221,8 +252,9 @@ def market():
     items = run_async(get_market_listings())
     items = [dict(row) for row in items]
 
-    # Attach severed head avatar URLs for listed trophies
+    # Attach severed head avatar URLs and local has_image flag
     for it in items:
+        # Per-head custom art (Discord avatar of the victim)
         if (
             it.get("set_name") == "Trophy"
             and "Severed Head" in str(it.get("item_name") or "")
@@ -231,6 +263,12 @@ def market():
             avatar_hash = run_async(db.get_user_avatar_hash(it["head_owner_id"]))
             if avatar_hash:
                 it["head_avatar_url"] = f"https://cdn.discordapp.com/avatars/{it['head_owner_id']}/{avatar_hash}.png?size=256"
+
+        # Check if a lootbox PNG actually exists for this item (case-insensitive)
+        set_name = str(it.get("set_name") or "Base_Set")
+        tier = str(it.get("tier") or "Common")
+        name = str(it.get("item_name") or "")
+        it["has_image"] = _lootbox_image_exists(set_name, tier, name)
 
     return render_template('market.html', items=items, active_page="market")
 
@@ -253,7 +291,7 @@ def inventory():
     raw_items = run_async(db.get_inventory(session['user_id']))
     items = [dict(row) for row in raw_items]
 
-    # Attach severed head avatar URLs where possible
+    # Attach severed head avatar URLs and local has_image flag
     for it in items:
         if (
             it.get("set_name") == "Trophy"
@@ -263,6 +301,11 @@ def inventory():
             avatar_hash = run_async(db.get_user_avatar_hash(it["head_owner_id"]))
             if avatar_hash:
                 it["head_avatar_url"] = f"https://cdn.discordapp.com/avatars/{it['head_owner_id']}/{avatar_hash}.png?size=256"
+
+        set_name = str(it.get("set_name") or "Base_Set")
+        tier = str(it.get("tier") or "Common")
+        name = str(it.get("item_name") or "")
+        it["has_image"] = _lootbox_image_exists(set_name, tier, name)
 
     return render_template('inventory.html', items=items, active_page="inventory")
 
