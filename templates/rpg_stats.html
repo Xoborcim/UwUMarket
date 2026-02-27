@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}RPG Stats{% endblock %}
+
+{% block extra_head %}
+    <style>
+        .rpg-stats-container {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+        .rpg-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+            margin-bottom: 24px;
+        }
+        .rpg-card {
+            background: rgba(8, 14, 36, 0.95);
+            border-radius: 16px;
+            border: 1px solid rgba(31, 41, 55, 0.9);
+            padding: 18px 18px 16px;
+            text-align: center;
+        }
+        .rpg-label {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            margin-bottom: 8px;
+        }
+        .rpg-value {
+            font-size: 1.6rem;
+            font-weight: 800;
+        }
+        .rpg-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .class-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 4px;
+            font-size: 0.9rem;
+        }
+        .class-table th,
+        .class-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #1f2937;
+            text-align: left;
+        }
+        .class-table th {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <div class="page-title">RPG Overview</div>
+            <div class="page-subtitle">High-level stats for everyone grinding the dungeons.</div>
+        </div>
+        <div class="pill">⚔️ RPG Stats</div>
+    </div>
+
+    <div class="content-card">
+        <div class="rpg-stats-container">
+            <div class="rpg-grid">
+                <div class="rpg-card">
+                    <div class="rpg-label">Total Adventurers</div>
+                    <div class="rpg-value">{{ overall['player_count'] or 0 }}</div>
+                </div>
+                <div class="rpg-card">
+                    <div class="rpg-label">Average Max Floor</div>
+                    <div class="rpg-value">
+                        {{ (overall['avg_floor'] or 0) | round(1) }}
+                    </div>
+                    <div class="rpg-sub">Across all players</div>
+                </div>
+                <div class="rpg-card">
+                    <div class="rpg-label">Deepest Floor Reached</div>
+                    <div class="rpg-value">
+                        Floor {{ overall['max_floor'] or 0 }}
+                    </div>
+                    <div class="rpg-sub">World record run</div>
+                </div>
+            </div>
+
+            <div class="rpg-card" style="text-align:left; margin-top:4px;">
+                <div class="rpg-label">Class Performance</div>
+                <table class="class-table">
+                    <thead>
+                        <tr>
+                            <th>Class</th>
+                            <th>Players</th>
+                            <th>Avg Max Floor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in classes %}
+                        <tr>
+                            <td>{{ row['rpg_class'] }}</td>
+                            <td>{{ row['count'] }}</td>
+                            <td>{{ (row['avg_floor'] or 0) | round(1) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="rpg-sub">Unassigned includes players who haven't chosen a class yet.</div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
