@@ -13,6 +13,11 @@
             grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
             gap: 22px;
         }
+        @media (max-width: 768px) {
+            .market-grid { grid-template-columns: 1fr; gap: 16px; }
+            .market-card { padding: 14px; }
+            .bet-buttons .btn-bet { min-height: 44px; }
+        }
         .market-card {
             background: rgba(8, 14, 36, 0.95);
             border-radius: 16px;

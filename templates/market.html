@@ -113,6 +113,10 @@
             border-radius: 10px;
             font-size: 0.9rem;
         }
+        @media (max-width: 768px) {
+            .market-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; }
+            .buy-button { min-height: 44px; }
+        }
     </style>
 {% endblock %}
 
