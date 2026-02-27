@@ -2,6 +2,8 @@ import aiosqlite
 import sqlite3
 import datetime
 import random
+import os
+import json
 
 DB_NAME = "market.db"
 
@@ -445,6 +447,30 @@ async def equip_inventory_item(user_id, item_id):
             atk_b = int(item.get("atk_bonus", 0) or 0)
             def_b = int(item.get("def_bonus", 0) or 0)
             int_b = int(item.get("int_bonus", 0) or 0)
+
+            # If there are no stats yet, try to pull them from the lootbox meta for this set/name.
+            if atk_b == 0 and def_b == 0 and int_b == 0:
+                set_name = item.get("set_name")
+                name = item.get("item_name")
+                if set_name and name:
+                    try:
+                        meta_path = os.path.join("lootboxes", set_name, "meta.json")
+                        if os.path.exists(meta_path):
+                            with open(meta_path, "r", encoding="utf-8") as f:
+                                raw_meta = json.load(f)
+                            if isinstance(raw_meta, dict):
+                                meta = {str(k).lower(): v for k, v in raw_meta.items()}
+                                item_meta = meta.get(str(name).lower())
+                                if isinstance(item_meta, dict):
+                                    atk_b = int(item_meta.get("atk_bonus", 0) or 0)
+                                    def_b = int(item_meta.get("def_bonus", 0) or 0)
+                                    int_b = int(item_meta.get("int_bonus", 0) or 0)
+                                    await db.execute(
+                                        "UPDATE inventory SET atk_bonus = ?, def_bonus = ?, int_bonus = ? WHERE item_id = ?",
+                                        (atk_b, def_b, int_b, item_id),
+                                    )
+                    except Exception:
+                        pass
 
             if atk_b == 0 and def_b == 0 and int_b == 0:
                 return False, "That item cannot be equipped."
