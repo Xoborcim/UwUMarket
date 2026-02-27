@@ -565,7 +565,7 @@ async def scrap_duplicates(user_id, scrap_values):
             (user_id,),
         ) as cursor:
             rows = await cursor.fetchall()
-    items = [dict(r) for r in rows]
+    items = [{k: r[k] for k in r.keys()} for r in rows]
     key = lambda it: (str(it.get("item_name") or ""), str(it.get("set_name") or ""), str(it.get("tier") or ""))
     seen = {}
     to_scrap = []
@@ -580,11 +580,13 @@ async def scrap_duplicates(user_id, scrap_values):
     total_net = 0.0
     async with aiosqlite.connect(DB_NAME) as db:
         for it in to_scrap:
-            scrap_val = scrap_values.get(it.get("tier"), 5.0)
             await db.execute("DELETE FROM inventory WHERE item_id = ?", (it["item_id"],))
-            net, _ = await process_town_payout(user_id, scrap_val)
-            total_net += net
         await db.commit()
+    for it in to_scrap:
+        tier = it.get("tier") or "Common"
+        scrap_val = scrap_values.get(tier, 5.0) if isinstance(scrap_values, dict) else 5.0
+        net, _ = await process_town_payout(user_id, scrap_val)
+        total_net += net
     return len(to_scrap), total_net, f"Scrapped {len(to_scrap)} duplicate(s) for ${total_net:,.2f} total."
 
 async def get_inventory(user_id):

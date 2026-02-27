@@ -372,8 +372,11 @@ def api_scrap_item():
 def api_scrap_duplicates():
     if 'user_id' not in session:
         return {"success": False, "message": "Not logged in"}, 401
-    count, total_net, msg = run_async(db.scrap_duplicates(session['user_id'], SCRAP_VALUES))
-    return {"success": True, "count": count, "total_net": total_net, "message": msg}
+    try:
+        count, total_net, msg = run_async(db.scrap_duplicates(session['user_id'], SCRAP_VALUES))
+        return {"success": True, "count": count, "total_net": total_net, "message": msg}
+    except Exception as e:
+        return {"success": False, "message": f"Error: {str(e)}"}, 500
 
 # --- LOOTBOX ROUTES ---
 
