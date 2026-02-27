@@ -114,11 +114,53 @@
     .roulette-choice button.selected { box-shadow: 0 0 0 3px var(--accent-soft); }
     .roulette-wheel-wrap {
         margin: 20px 0;
-        min-height: 100px;
+        min-height: 120px;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
+    }
+    .roulette-wheel-outer {
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        position: relative;
+        margin-bottom: 16px;
+        box-shadow: 0 0 0 4px var(--border-color), 0 8px 32px rgba(0,0,0,0.4);
+        flex-shrink: 0;
+    }
+    .roulette-wheel-outer::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: -6px;
+        margin-left: -10px;
+        border: 10px solid transparent;
+        border-bottom-color: var(--accent-color);
+        z-index: 2;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    }
+    .roulette-wheel-inner {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        position: relative;
+        overflow: hidden;
+        transition: transform 4.2s cubic-bezier(0.15, 0.85, 0.1, 1);
+    }
+    .roulette-wheel-inner.spin { transition: transform 4.2s cubic-bezier(0.15, 0.85, 0.1, 1); }
+    .roulette-wheel-num {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        font-size: 0.65rem;
+        font-weight: 800;
+        transform-origin: 50% 50%;
+        margin-left: -6px;
+        margin-top: -8px;
+        width: 12px;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.9);
     }
     .roulette-ball { font-size: 2rem; margin: 16px 0; transition: opacity 0.3s; }
     .roulette-ball.spinning { opacity: 0.85; }
@@ -128,9 +170,11 @@
         line-height: 1.2;
         min-width: 100px;
         text-align: center;
-        color: var(--text-main);
         transition: transform 0.08s ease-out;
     }
+    .roulette-number.roulette-num-red { color: #f87171; }
+    .roulette-number.roulette-num-black { color: #e5e7eb; }
+    .roulette-number.roulette-num-green { color: #4ade80; }
     .roulette-number.bounce { animation: roulette-bounce 0.5s ease-out; }
     @keyframes roulette-bounce {
         0% { transform: scale(1.1); }
@@ -218,43 +262,45 @@
     .plinko-drop-zone {
         position: relative;
         margin: 16px 0;
-        padding: 12px;
+        padding: 16px;
         background: linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
         border-radius: 16px;
-        height: 220px;
+        height: 360px;
         border: 1px solid var(--border-color);
         display: flex;
         flex-direction: column;
     }
     .plinko-chip {
         position: absolute;
-        width: 28px;
-        height: 28px;
-        left: 50%;
-        top: 12px;
-        margin-left: -14px;
+        width: 32px;
+        height: 32px;
+        left: 0;
+        top: 16px;
+        margin-left: 0;
         border-radius: 50%;
         background: radial-gradient(circle at 30% 30%, #fef3c7, #f59e0b 40%, #b45309);
         border: 2px solid #fbbf24;
         box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.3);
         pointer-events: none;
         z-index: 2;
+        transform: translateX(-50%);
         transition: top 0.14s ease-in, left 0.12s ease-out;
     }
     .plinko-chip.dropping { transition: top 0.13s ease-in, left 0.11s ease-out; }
     .plinko-chip.landed { transition: transform 0.35s ease-out; }
     .plinko-chip.landed { animation: plinko-land 0.4s ease-out; }
     @keyframes plinko-land {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.25); }
-        100% { transform: scale(1); }
+        0% { transform: translateX(-50%) scale(1); }
+        50% { transform: translateX(-50%) scale(1.25); }
+        100% { transform: translateX(-50%) scale(1); }
     }
     .plinko-slots-row {
-        display: flex;
-        justify-content: center;
+        display: grid;
+        grid-template-columns: repeat(9, 1fr);
         gap: 6px;
-        padding: 12px 8px 8px;
+        padding: 12px 0 0;
         margin-top: auto;
+        width: 100%;
     }
     .plinko-board .plinko-slot {
         padding: 8px 12px;
@@ -324,6 +370,9 @@
             </div>
             <button type="button" class="btn-casino btn-spin" id="roulette-spin">Spin</button>
             <div class="roulette-wheel-wrap" id="roulette-wheel-wrap">
+                <div class="roulette-wheel-outer" id="roulette-wheel-outer">
+                    <div class="roulette-wheel-inner" id="roulette-wheel-inner"></div>
+                </div>
                 <div class="roulette-number" id="roulette-number">—</div>
                 <div class="roulette-color-badge" id="roulette-color-badge"></div>
             </div>
@@ -506,7 +555,43 @@
         }
     });
 
-    // Roulette
+    // Roulette — standard European number colors
+    const ROULETTE_RED = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
+    function rouletteNumberColor(n) {
+        if (n === 0) return 'green';
+        return ROULETTE_RED.indexOf(n) >= 0 ? 'red' : 'black';
+    }
+    function buildRouletteWheel() {
+        const inner = document.getElementById('roulette-wheel-inner');
+        if (inner.dataset.built) return;
+        inner.dataset.built = '1';
+        const segmentAngle = 360 / 37;
+        const parts = [];
+        for (let i = 0; i <= 37; i++) {
+            const c = rouletteNumberColor(i % 37);
+            const col = c === 'green' ? '#15803d' : (c === 'red' ? '#b91c1c' : '#1f2937');
+            parts.push(col + ' ' + (i * segmentAngle) + 'deg');
+        }
+        inner.style.background = 'conic-gradient(from 0deg, ' + parts.join(', ') + ')';
+        for (let i = 0; i < 37; i++) {
+            const num = document.createElement('span');
+            num.className = 'roulette-wheel-num roulette-num-' + rouletteNumberColor(i);
+            num.textContent = i;
+            const deg = i * segmentAngle + segmentAngle / 2;
+            const rad = (deg - 90) * Math.PI / 180;
+            const r = 42;
+            num.style.left = (50 + r * Math.cos(rad)) + '%';
+            num.style.top = (50 + r * Math.sin(rad)) + '%';
+            num.style.marginLeft = '-6px';
+            num.style.marginTop = '-8px';
+            inner.appendChild(num);
+        }
+    }
+    (function injectRouletteSegmentStyles() {
+        const style = document.createElement('style');
+        style.textContent = '.roulette-wheel-num.roulette-num-red { color: #fef2f2; } .roulette-wheel-num.roulette-num-black { color: #f3f4f6; } .roulette-wheel-num.roulette-num-green { color: #dcfce7; }';
+        document.head.appendChild(style);
+    })();
     let rouletteChoice = 'red';
     document.querySelectorAll('.roulette-choice button').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -523,11 +608,13 @@
         const numEl = document.getElementById('roulette-number');
         const badgeEl = document.getElementById('roulette-color-badge');
         const spinBtn = document.getElementById('roulette-spin');
+        const wheelInner = document.getElementById('roulette-wheel-inner');
         resultEl.classList.remove('show', 'win', 'loss');
         errEl.textContent = '';
         badgeEl.classList.remove('show');
         badgeEl.textContent = '';
         spinBtn.disabled = true;
+        buildRouletteWheel();
         const res = await fetch('/api/casino/roulette', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bet, choice: rouletteChoice }) });
         const data = await res.json();
         if (!data.success) {
@@ -535,21 +622,33 @@
             spinBtn.disabled = false;
             return;
         }
+        const finalNumber = data.number;
+        const segmentAngle = 360 / 37;
+        const fullSpins = 6;
+        const currentRotation = parseFloat(wheelInner.dataset.rotation || '0');
+        const finalRotation = currentRotation + 360 * fullSpins + (360 - finalNumber * segmentAngle);
+        wheelInner.dataset.rotation = finalRotation;
+        wheelInner.style.transform = 'rotate(' + finalRotation + 'deg)';
+        numEl.classList.remove('roulette-num-red', 'roulette-num-black', 'roulette-num-green');
         numEl.classList.add('spinning');
         numEl.textContent = '0';
-        const finalNumber = data.number;
+        numEl.classList.add('roulette-num-black');
         const colorEmoji = data.color === 'green' ? '🟩' : (data.color === 'red' ? '🟥' : '⬛');
         const colorLabel = data.color.charAt(0).toUpperCase() + data.color.slice(1);
         const delays = [70, 70, 80, 80, 100, 120, 150, 200, 280, 400];
         let step = 0;
         function tick() {
             if (step < delays.length) {
-                numEl.textContent = Math.floor(Math.random() * 37);
+                const r = Math.floor(Math.random() * 37);
+                numEl.textContent = r;
+                numEl.classList.remove('roulette-num-red', 'roulette-num-black', 'roulette-num-green');
+                numEl.classList.add('roulette-num-' + rouletteNumberColor(r));
                 step++;
                 setTimeout(tick, delays[step - 1]);
             } else {
                 numEl.textContent = finalNumber;
-                numEl.classList.remove('spinning');
+                numEl.classList.remove('spinning', 'roulette-num-red', 'roulette-num-black', 'roulette-num-green');
+                numEl.classList.add('roulette-num-' + rouletteNumberColor(finalNumber));
                 numEl.classList.add('bounce');
                 setTimeout(() => numEl.classList.remove('bounce'), 500);
                 badgeEl.textContent = colorLabel + ' ' + colorEmoji;
@@ -829,13 +928,13 @@
             idx = Math.max(0, Math.min(8, idx + (m === 'R' ? 1 : -1)));
             path.push(idx);
         }
-        const zoneHeight = zone.offsetHeight || 220;
-        const topStart = 10;
-        const topEnd = zoneHeight - 52;
+        const zoneHeight = zone.offsetHeight || 360;
+        const topStart = 16;
+        const topEnd = zoneHeight - 56;
         chip.classList.add('dropping');
         chip.style.display = 'block';
         chip.style.top = topStart + 'px';
-        chip.style.left = 'calc(' + ((4 + 0.5) / 9 * 100) + '% - 14px)';
+        chip.style.left = ((4 + 0.5) / 9 * 100) + '%';
         chip.offsetHeight;
         function moveToRow(r) {
             if (r > path.length - 1) {
@@ -850,7 +949,7 @@
             }
             const p = path[r];
             chip.style.top = (topStart + (r / (path.length - 1)) * (topEnd - topStart)) + 'px';
-            chip.style.left = 'calc(' + ((p + 0.5) / 9 * 100) + '% - 14px)';
+            chip.style.left = ((p + 0.5) / 9 * 100) + '%';
             setTimeout(() => moveToRow(r + 1), 130);
         }
         setTimeout(() => moveToRow(1), 50);
