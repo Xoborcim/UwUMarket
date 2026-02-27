@@ -280,16 +280,16 @@ def api_open_box():
     if os.path.exists(meta_path):
         try:
             with open(meta_path, "r", encoding="utf-8") as f:
-                meta = json.load(f)
-            item_meta = None
-            if isinstance(meta, dict):
-                item_meta = meta.get(item_name) or meta.get(item_name.lower())
-            if isinstance(item_meta, dict):
-                item_type = item_meta.get("item_type", item_type)
-                slot = item_meta.get("slot")
-                atk_bonus = int(item_meta.get("atk_bonus", 0) or 0)
-                def_bonus = int(item_meta.get("def_bonus", 0) or 0)
-                int_bonus = int(item_meta.get("int_bonus", 0) or 0)
+                raw_meta = json.load(f)
+            if isinstance(raw_meta, dict):
+                meta = {str(k).lower(): v for k, v in raw_meta.items()}
+                item_meta = meta.get(item_name.lower())
+                if isinstance(item_meta, dict):
+                    item_type = item_meta.get("item_type", item_type)
+                    slot = item_meta.get("slot")
+                    atk_bonus = int(item_meta.get("atk_bonus", 0) or 0)
+                    def_bonus = int(item_meta.get("def_bonus", 0) or 0)
+                    int_bonus = int(item_meta.get("int_bonus", 0) or 0)
         except Exception:
             pass
 
