@@ -252,10 +252,10 @@ class Items(commands.Cog):
         if not valid_tiers:
             return await interaction.response.send_message(f"❌ The set **{set_name}** has no .png images inside it! Add some first.", ephemeral=True)
 
-        cost = 500.0
+        cost = 10000.0
         # Added Await!
         if not await db.update_balance(interaction.user.id, -cost):
-            return await interaction.response.send_message("❌ Insufficient funds ($500 needed).", ephemeral=True)
+            return await interaction.response.send_message("❌ Insufficient funds ($10,000 needed).", ephemeral=True)
         
         valid_weights = [TIER_WEIGHTS[t] for t in valid_tiers]
         rolled_tier = random.choices(valid_tiers, weights=valid_weights, k=1)[0]
@@ -263,7 +263,7 @@ class Items(commands.Cog):
         result = self.get_random_item(set_name, rolled_tier)
         if not result:
             await db.update_balance(interaction.user.id, cost)
-            return await interaction.response.send_message("❌ Lootbox failed to generate an item. Your $500 was refunded.", ephemeral=True)
+            return await interaction.response.send_message("❌ Lootbox failed to generate an item. Your $10,000 was refunded.", ephemeral=True)
         item_name, filepath = result
         
         item_type = "Collectible"
