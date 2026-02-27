@@ -136,7 +136,8 @@
                             <button class="sell-button" onclick='openModal({{ item["item_id"] | tojson }}, {{ item["item_name"] | tojson }})'>Sell</button>
                             <button class="scrap-button" onclick='scrapItem({{ item["item_id"] }})'>Scrap</button>
                         </div>
-                        {% if item.get('slot') %}
+                        {% set has_stats = (item.get('atk_bonus',0) or item.get('def_bonus',0) or item.get('int_bonus',0)) %}
+                        {% if item.get('slot') or has_stats %}
                         <div class="button-group" style="margin-top:8px;">
                             <button class="sell-button" style="background:#22c55e;"
                                     onclick='equipItem({{ item["item_id"] }})'>
@@ -144,7 +145,7 @@
                             </button>
                             {% if item.get('is_equipped') %}
                             <button class="scrap-button" style="background:#475569;"
-                                    onclick='unequipSlot({{ item.get("slot") | tojson }})'>
+                                    onclick='unequipSlot({{ (item.get("slot") or "weapon") | tojson }})'>
                                 Unequip Slot
                             </button>
                             {% endif %}
