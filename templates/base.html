@@ -279,18 +279,20 @@
                 min-width: 0;
                 max-width: 100%;
                 overflow: hidden;
+                display: flex;
+                align-items: center;
+                gap: 6px;
             }
             .user-pill span:not(.separator):first-of-type {
-                max-width: 70px;
+                min-width: 0;
+                max-width: 52px;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
             }
             .user-pill #gold-counter {
-                max-width: 72px;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
+                flex-shrink: 0;
+                min-width: 7em;
             }
             .page-shell {
                 padding: 20px 4%;
