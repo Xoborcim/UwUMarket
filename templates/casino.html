@@ -590,25 +590,26 @@
         });
     });
 
-    // Plinko pegs — triangular board (10 rows, row i has i+1 pegs)
+    // Plinko pegs — 8 rows: row i has i+1 pegs at (j+1)/(i+2) so bottom row aligns with 9 slots at 1/9..8/9
     function buildPlinkoPegs() {
         const container = document.getElementById('plinko-pegs');
         if (container.dataset.built) return;
         container.dataset.built = '1';
         const zoneHeight = 360;
-        const topPadding = 20;
-        const bottomPadding = 52;
+        const topPadding = 24;
+        const bottomPadding = 56;
         const rowsHeight = zoneHeight - topPadding - bottomPadding;
-        for (let row = 0; row < 10; row++) {
+        const numRows = 8;
+        for (let row = 0; row < numRows; row++) {
             const rowEl = document.createElement('div');
             rowEl.className = 'plinko-peg-row';
             const numPegs = row + 1;
-            const topPct = (topPadding + (row / 10) * rowsHeight) / zoneHeight * 100;
+            const topPct = (topPadding + ((row + 1) / 9) * rowsHeight) / zoneHeight * 100;
             rowEl.style.top = topPct + '%';
             for (let j = 0; j < numPegs; j++) {
                 const peg = document.createElement('div');
                 peg.className = 'plinko-peg';
-                const leftPct = ((j + 1) / (numPegs + 1)) * 100;
+                const leftPct = ((j + 1) / (row + 2)) * 100;
                 peg.style.left = leftPct + '%';
                 rowEl.appendChild(peg);
             }
@@ -741,8 +742,10 @@
         const finalNumber = data.number;
         const segmentAngle = 360 / 37;
         const fullSpins = 6;
+        const wheelDurationMs = 4200;
         const currentRotation = parseFloat(wheelInner.dataset.rotation || '0');
-        const finalRotation = currentRotation + 360 * fullSpins + (360 - finalNumber * segmentAngle);
+        const angleToLand = finalNumber * segmentAngle + segmentAngle / 2;
+        const finalRotation = currentRotation + 360 * fullSpins + (360 - angleToLand);
         wheelInner.dataset.rotation = finalRotation;
         wheelInner.style.transform = 'rotate(' + finalRotation + 'deg)';
         numEl.classList.remove('roulette-num-red', 'roulette-num-black', 'roulette-num-green');
@@ -751,38 +754,31 @@
         numEl.classList.add('roulette-num-black');
         const colorEmoji = data.color === 'green' ? '🟩' : (data.color === 'red' ? '🟥' : '⬛');
         const colorLabel = data.color.charAt(0).toUpperCase() + data.color.slice(1);
-        const delays = [70, 70, 80, 80, 100, 120, 150, 200, 280, 400];
-        let step = 0;
-        function tick() {
-            if (step < delays.length) {
-                const r = Math.floor(Math.random() * 37);
-                numEl.textContent = r;
-                numEl.classList.remove('roulette-num-red', 'roulette-num-black', 'roulette-num-green');
-                numEl.classList.add('roulette-num-' + rouletteNumberColor(r));
-                step++;
-                setTimeout(tick, delays[step - 1]);
+        const numberInterval = setInterval(() => {
+            const r = Math.floor(Math.random() * 37);
+            numEl.textContent = r;
+            numEl.classList.remove('roulette-num-red', 'roulette-num-black', 'roulette-num-green');
+            numEl.classList.add('roulette-num-' + rouletteNumberColor(r));
+        }, 80);
+        setTimeout(() => {
+            clearInterval(numberInterval);
+            numEl.textContent = finalNumber;
+            numEl.classList.remove('spinning', 'roulette-num-red', 'roulette-num-black', 'roulette-num-green');
+            numEl.classList.add('roulette-num-' + rouletteNumberColor(finalNumber));
+            numEl.classList.add('bounce');
+            setTimeout(() => numEl.classList.remove('bounce'), 500);
+            badgeEl.textContent = colorLabel + ' ' + colorEmoji;
+            badgeEl.className = 'roulette-color-badge show ' + data.color;
+            if (data.new_balance != null) updateGold(data.new_balance);
+            if (data.won) {
+                resultEl.textContent = 'You won! +$' + data.net.toFixed(2) + ' (tax: $' + data.tax.toFixed(2) + ')';
+                resultEl.className = 'game-result show win';
             } else {
-                numEl.textContent = finalNumber;
-                numEl.classList.remove('spinning', 'roulette-num-red', 'roulette-num-black', 'roulette-num-green');
-                numEl.classList.add('roulette-num-' + rouletteNumberColor(finalNumber));
-                numEl.classList.add('bounce');
-                setTimeout(() => numEl.classList.remove('bounce'), 500);
-                badgeEl.textContent = colorLabel + ' ' + colorEmoji;
-                badgeEl.className = 'roulette-color-badge show ' + data.color;
-                setTimeout(() => {
-                    if (data.new_balance != null) updateGold(data.new_balance);
-                    if (data.won) {
-                        resultEl.textContent = 'You won! +$' + data.net.toFixed(2) + ' (tax: $' + data.tax.toFixed(2) + ')';
-                        resultEl.className = 'game-result show win';
-                    } else {
-                        resultEl.textContent = 'You lost. Ball was ' + data.color + '.';
-                        resultEl.className = 'game-result show loss';
-                    }
-                    spinBtn.disabled = false;
-                }, 350);
+                resultEl.textContent = 'You lost. Ball was ' + data.color + '.';
+                resultEl.className = 'game-result show loss';
             }
-        }
-        tick();
+            spinBtn.disabled = false;
+        }, wheelDurationMs);
     });
 
     // Blackjack
