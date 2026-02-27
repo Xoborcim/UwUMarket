@@ -112,7 +112,50 @@
     .roulette-choice button.black { border-color: #374151; color: #9ca3af; }
     .roulette-choice button.green { border-color: #16a34a; color: #4ade80; }
     .roulette-choice button.selected { box-shadow: 0 0 0 3px var(--accent-soft); }
-    .roulette-ball { font-size: 2rem; margin: 16px 0; }
+    .roulette-wheel-wrap {
+        margin: 20px 0;
+        min-height: 100px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    .roulette-ball { font-size: 2rem; margin: 16px 0; transition: opacity 0.3s; }
+    .roulette-ball.spinning { opacity: 0.85; }
+    .roulette-number {
+        font-size: 3.5rem;
+        font-weight: 800;
+        line-height: 1.2;
+        min-width: 100px;
+        text-align: center;
+        color: var(--text-main);
+        transition: transform 0.08s ease-out;
+    }
+    .roulette-number.bounce { animation: roulette-bounce 0.5s ease-out; }
+    @keyframes roulette-bounce {
+        0% { transform: scale(1.1); }
+        40% { transform: scale(0.95); }
+        70% { transform: scale(1.03); }
+        100% { transform: scale(1); }
+    }
+    .roulette-color-badge {
+        display: inline-block;
+        font-size: 1.5rem;
+        margin-top: 6px;
+        padding: 4px 12px;
+        border-radius: 999px;
+        font-weight: 700;
+        opacity: 0;
+        transition: opacity 0.4s ease-out;
+    }
+    .roulette-color-badge.show { opacity: 1; animation: roulette-badge-in 0.4s ease-out; }
+    .roulette-color-badge.red { background: rgba(220, 38, 38, 0.25); color: #fca5a5; }
+    .roulette-color-badge.black { background: rgba(55, 65, 81, 0.6); color: #d1d5db; }
+    .roulette-color-badge.green { background: rgba(34, 197, 94, 0.25); color: #86efac; }
+    @keyframes roulette-badge-in {
+        from { transform: scale(0.8); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+    }
     /* Blackjack */
     .bj-table { background: #0c4a2a; border-radius: 16px; padding: 24px; margin: 16px 0; border: 3px solid #14532d; }
     .bj-dealer, .bj-player { margin-bottom: 20px; }
@@ -172,24 +215,61 @@
     .mines-tile.mine { background: rgba(220, 38, 38, 0.3); border-color: #dc2626; }
     .mines-grid.ended .mines-tile { pointer-events: none; }
     /* Plinko */
-    .plinko-board {
+    .plinko-drop-zone {
+        position: relative;
+        margin: 16px 0;
+        padding: 12px;
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+        border-radius: 16px;
+        height: 220px;
+        border: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+    }
+    .plinko-chip {
+        position: absolute;
+        width: 28px;
+        height: 28px;
+        left: 50%;
+        top: 12px;
+        margin-left: -14px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 30% 30%, #fef3c7, #f59e0b 40%, #b45309);
+        border: 2px solid #fbbf24;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+        pointer-events: none;
+        z-index: 2;
+        transition: top 0.14s ease-in, left 0.12s ease-out;
+    }
+    .plinko-chip.dropping { transition: top 0.13s ease-in, left 0.11s ease-out; }
+    .plinko-chip.landed { transition: transform 0.35s ease-out; }
+    .plinko-chip.landed { animation: plinko-land 0.4s ease-out; }
+    @keyframes plinko-land {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.25); }
+        100% { transform: scale(1); }
+    }
+    .plinko-slots-row {
         display: flex;
         justify-content: center;
         gap: 6px;
-        flex-wrap: wrap;
-        padding: 16px;
-        margin: 16px 0;
-        background: #0f172a;
-        border-radius: 12px;
+        padding: 12px 8px 8px;
+        margin-top: auto;
     }
-    .plinko-slot {
+    .plinko-board .plinko-slot {
         padding: 8px 12px;
         border-radius: 8px;
         background: #1e293b;
         color: var(--text-muted);
         font-weight: 700;
+        transition: background 0.25s, color 0.25s, box-shadow 0.25s;
     }
-    .plinko-slot.landed { background: var(--accent-soft); color: var(--accent-color); border: 1px solid var(--accent-color); }
+    .plinko-slot.landed {
+        background: var(--accent-soft);
+        color: var(--accent-color);
+        border: 1px solid var(--accent-color);
+        box-shadow: 0 0 16px var(--accent-soft);
+    }
     .msg-err { color: #f87171; font-size: 0.9rem; margin-top: 8px; }
 </style>
 {% endblock %}
@@ -243,7 +323,10 @@
                 <button type="button" class="green" data-choice="green">Green (14x)</button>
             </div>
             <button type="button" class="btn-casino btn-spin" id="roulette-spin">Spin</button>
-            <div class="roulette-ball" id="roulette-ball"></div>
+            <div class="roulette-wheel-wrap" id="roulette-wheel-wrap">
+                <div class="roulette-number" id="roulette-number">—</div>
+                <div class="roulette-color-badge" id="roulette-color-badge"></div>
+            </div>
             <div class="game-result" id="roulette-result"></div>
             <div class="msg-err" id="roulette-err"></div>
         </div>
@@ -342,16 +425,19 @@
                 <input type="number" id="plinko-bet" min="1" step="1" value="10">
                 <button type="button" class="btn-casino btn-spin" id="plinko-drop">Drop Chip</button>
             </div>
-            <div class="plinko-board" id="plinko-board">
-                <span class="plinko-slot" data-idx="0">10x</span>
-                <span class="plinko-slot" data-idx="1">4x</span>
-                <span class="plinko-slot" data-idx="2">2.2x</span>
-                <span class="plinko-slot" data-idx="3">1.4x</span>
-                <span class="plinko-slot" data-idx="4">0.8x</span>
-                <span class="plinko-slot" data-idx="5">1.4x</span>
-                <span class="plinko-slot" data-idx="6">2.2x</span>
-                <span class="plinko-slot" data-idx="7">4x</span>
-                <span class="plinko-slot" data-idx="8">10x</span>
+            <div class="plinko-drop-zone" id="plinko-drop-zone">
+                <div class="plinko-chip" id="plinko-chip" style="display: none;"></div>
+                <div class="plinko-slots-row plinko-board" id="plinko-board">
+                    <span class="plinko-slot" data-idx="0">10x</span>
+                    <span class="plinko-slot" data-idx="1">4x</span>
+                    <span class="plinko-slot" data-idx="2">2.2x</span>
+                    <span class="plinko-slot" data-idx="3">1.4x</span>
+                    <span class="plinko-slot" data-idx="4">0.8x</span>
+                    <span class="plinko-slot" data-idx="5">1.4x</span>
+                    <span class="plinko-slot" data-idx="6">2.2x</span>
+                    <span class="plinko-slot" data-idx="7">4x</span>
+                    <span class="plinko-slot" data-idx="8">10x</span>
+                </div>
             </div>
             <div class="game-result" id="plinko-result"></div>
             <div class="msg-err" id="plinko-err"></div>
@@ -434,26 +520,54 @@
         const bet = parseFloat(document.getElementById('roulette-bet').value) || 0;
         const errEl = document.getElementById('roulette-err');
         const resultEl = document.getElementById('roulette-result');
-        const ballEl = document.getElementById('roulette-ball');
+        const numEl = document.getElementById('roulette-number');
+        const badgeEl = document.getElementById('roulette-color-badge');
+        const spinBtn = document.getElementById('roulette-spin');
         resultEl.classList.remove('show', 'win', 'loss');
         errEl.textContent = '';
-        ballEl.textContent = '';
+        badgeEl.classList.remove('show');
+        badgeEl.textContent = '';
+        spinBtn.disabled = true;
         const res = await fetch('/api/casino/roulette', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bet, choice: rouletteChoice }) });
         const data = await res.json();
         if (!data.success) {
             errEl.textContent = data.error || 'Failed';
+            spinBtn.disabled = false;
             return;
         }
+        numEl.classList.add('spinning');
+        numEl.textContent = '0';
+        const finalNumber = data.number;
         const colorEmoji = data.color === 'green' ? '🟩' : (data.color === 'red' ? '🟥' : '⬛');
-        ballEl.textContent = `Ball: ${data.number} ${colorEmoji}`;
-        if (data.new_balance != null) updateGold(data.new_balance);
-        if (data.won) {
-            resultEl.textContent = `You won! +$${data.net.toFixed(2)} (tax: $${data.tax.toFixed(2)})`;
-            resultEl.className = 'game-result show win';
-        } else {
-            resultEl.textContent = 'You lost. Ball was ' + data.color + '.';
-            resultEl.className = 'game-result show loss';
+        const colorLabel = data.color.charAt(0).toUpperCase() + data.color.slice(1);
+        const delays = [70, 70, 80, 80, 100, 120, 150, 200, 280, 400];
+        let step = 0;
+        function tick() {
+            if (step < delays.length) {
+                numEl.textContent = Math.floor(Math.random() * 37);
+                step++;
+                setTimeout(tick, delays[step - 1]);
+            } else {
+                numEl.textContent = finalNumber;
+                numEl.classList.remove('spinning');
+                numEl.classList.add('bounce');
+                setTimeout(() => numEl.classList.remove('bounce'), 500);
+                badgeEl.textContent = colorLabel + ' ' + colorEmoji;
+                badgeEl.className = 'roulette-color-badge show ' + data.color;
+                setTimeout(() => {
+                    if (data.new_balance != null) updateGold(data.new_balance);
+                    if (data.won) {
+                        resultEl.textContent = 'You won! +$' + data.net.toFixed(2) + ' (tax: $' + data.tax.toFixed(2) + ')';
+                        resultEl.className = 'game-result show win';
+                    } else {
+                        resultEl.textContent = 'You lost. Ball was ' + data.color + '.';
+                        resultEl.className = 'game-result show loss';
+                    }
+                    spinBtn.disabled = false;
+                }, 350);
+            }
         }
+        tick();
     });
 
     // Blackjack
@@ -695,20 +809,51 @@
         const bet = parseFloat(document.getElementById('plinko-bet').value) || 0;
         const errEl = document.getElementById('plinko-err');
         const resultEl = document.getElementById('plinko-result');
+        const chip = document.getElementById('plinko-chip');
+        const zone = document.getElementById('plinko-drop-zone');
         document.querySelectorAll('.plinko-slot').forEach(s => s.classList.remove('landed'));
         resultEl.classList.remove('show', 'win', 'loss');
         errEl.textContent = '';
+        chip.style.display = 'none';
+        chip.classList.remove('landed', 'dropping');
         const res = await fetch('/api/casino/plinko', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bet }) });
         const data = await res.json();
         if (!data.success) {
             errEl.textContent = data.error || 'Failed';
             return;
         }
-        if (data.new_balance != null) updateGold(data.new_balance);
-        const slot = document.querySelector(`.plinko-slot[data-idx="${data.landed_idx}"]`);
-        if (slot) slot.classList.add('landed');
-        resultEl.textContent = `Landed on ${data.multiplier}x → +$${data.net.toFixed(2)} (tax: $${data.tax.toFixed(2)})`;
-        resultEl.className = 'game-result show ' + (data.multiplier >= 1 ? 'win' : 'loss');
+        const moves = data.moves || [];
+        const path = [4];
+        let idx = 4;
+        for (const m of moves) {
+            idx = Math.max(0, Math.min(8, idx + (m === 'R' ? 1 : -1)));
+            path.push(idx);
+        }
+        const zoneHeight = zone.offsetHeight || 220;
+        const topStart = 10;
+        const topEnd = zoneHeight - 52;
+        chip.classList.add('dropping');
+        chip.style.display = 'block';
+        chip.style.top = topStart + 'px';
+        chip.style.left = 'calc(' + ((4 + 0.5) / 9 * 100) + '% - 14px)';
+        chip.offsetHeight;
+        function moveToRow(r) {
+            if (r > path.length - 1) {
+                chip.classList.remove('dropping');
+                chip.classList.add('landed');
+                const slot = document.querySelector('.plinko-board .plinko-slot[data-idx="' + data.landed_idx + '"]');
+                if (slot) slot.classList.add('landed');
+                if (data.new_balance != null) updateGold(data.new_balance);
+                resultEl.textContent = 'Landed on ' + data.multiplier + 'x → +$' + data.net.toFixed(2) + ' (tax: $' + data.tax.toFixed(2) + ')';
+                resultEl.className = 'game-result show ' + (data.multiplier >= 1 ? 'win' : 'loss');
+                return;
+            }
+            const p = path[r];
+            chip.style.top = (topStart + (r / (path.length - 1)) * (topEnd - topStart)) + 'px';
+            chip.style.left = 'calc(' + ((p + 0.5) / 9 * 100) + '% - 14px)';
+            setTimeout(() => moveToRow(r + 1), 130);
+        }
+        setTimeout(() => moveToRow(1), 50);
     });
 })();
 </script>
