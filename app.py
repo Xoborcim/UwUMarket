@@ -269,14 +269,53 @@ def api_open_box():
     if not result:
         run_async(db.update_balance(user_id, cost))
         return {"success": False, "message": "Item generation failed."}
-        
-    run_async(db.add_item(user_id, result[0], rolled_tier, set_name))
+
+    item_name, image_url = result
+
+    # Look for RPG meta so lootboxes can drop permanent RPG gear.
+    item_type = "Collectible"
+    slot = None
+    atk_bonus = def_bonus = int_bonus = 0
+    meta_path = os.path.join("lootboxes", set_name, "meta.json")
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            item_meta = None
+            if isinstance(meta, dict):
+                item_meta = meta.get(item_name) or meta.get(item_name.lower())
+            if isinstance(item_meta, dict):
+                item_type = item_meta.get("item_type", item_type)
+                slot = item_meta.get("slot")
+                atk_bonus = int(item_meta.get("atk_bonus", 0) or 0)
+                def_bonus = int(item_meta.get("def_bonus", 0) or 0)
+                int_bonus = int(item_meta.get("int_bonus", 0) or 0)
+        except Exception:
+            pass
+
+    run_async(
+        db.add_item(
+            user_id,
+            item_name,
+            rolled_tier,
+            set_name,
+            item_type=item_type,
+            slot=slot,
+            atk_bonus=atk_bonus,
+            def_bonus=def_bonus,
+            int_bonus=int_bonus,
+        )
+    )
     
     # Shout to the world about the pull!
     if rolled_tier in ["Epic", "Legendary", "Mythic"]:
-        broadcast_update('big_pull', {'username': session['username'], 'item': result[0], 'tier': rolled_tier})
+        broadcast_update('big_pull', {'username': session['username'], 'item': item_name, 'tier': rolled_tier})
         
-    return {"success": True, "message": f"Unboxed a {rolled_tier} {result[0]}!", "item": {"name": result[0], "tier": rolled_tier, "image": result[1]}}
+    return {
+        "success": True,
+        "message": f"Unboxed a {rolled_tier} {item_name}!",
+        "item": {"name": item_name, "tier": rolled_tier, "image": image_url},
+    }
 
 # --- TOWN HALL ROUTES ---
 
