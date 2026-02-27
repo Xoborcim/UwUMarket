@@ -421,6 +421,12 @@ class RPGSession(discord.ui.View):
         self.generate_paths()
         self.build_ui()
 
+    def _roll_elite_affixes(self):
+        """Randomly selects 1–2 elite affixes for an enemy."""
+        pool = ["enraging", "shielded", "hexing", "vampiric"]
+        k = 1 if random.random() < 0.6 else 2
+        return random.sample(pool, k=k)
+
     def generate_paths(self):
         self.paths = []
         
@@ -447,6 +453,11 @@ class RPGSession(discord.ui.View):
                 "effect": base.get('effect'), "chance": base.get('chance', 0),
                 "weakness": base.get('weakness'), "boss": True
             }
+            # Small chance for Elite boss with affixes
+            if random.random() < 0.25:
+                enemy['elite'] = True
+                enemy['affixes'] = self._roll_elite_affixes()
+                enemy['name'] = f"Elite {enemy['name']}"
             self.paths.append({"type": "boss", "label": "Enter Boss Room", "emoji": "☠️", "data": enemy})
             return
 
@@ -459,6 +470,11 @@ class RPGSession(discord.ui.View):
             "effect": base1.get('effect'), "chance": base1.get('chance', 0),
             "weakness": base1.get('weakness'), "boss": False
         }
+        # Chance to upgrade to Elite enemy with affixes
+        if random.random() < 0.18:
+            enemy1['elite'] = True
+            enemy1['affixes'] = self._roll_elite_affixes()
+            enemy1['name'] = f"Elite {enemy1['name']}"
         self.paths.append({"type": "combat", "label": f"Fight {enemy1['name']}", "emoji": "⚔️", "data": enemy1})
         
         roll = random.random()
@@ -480,6 +496,10 @@ class RPGSession(discord.ui.View):
                 "effect": base2.get('effect'), "chance": base2.get('chance', 0),
                 "weakness": base2.get('weakness'), "boss": False
             }
+            if random.random() < 0.18:
+                enemy2['elite'] = True
+                enemy2['affixes'] = self._roll_elite_affixes()
+                enemy2['name'] = f"Elite {enemy2['name']}"
             self.paths.append({"type": "combat", "label": f"Fight {enemy2['name']}", "emoji": "⚔️", "data": enemy2})
 
     def get_alive_players(self):
@@ -980,6 +1000,13 @@ class RPGSession(discord.ui.View):
             self.enemy['enraged'] = True
             self.enemy['atk'] = int(self.enemy['atk'] * 1.1) 
             self.log += f"⚠️ THE {self.enemy['name'].upper()} BECOMES ENRAGED! ATK INCREASED!\n"
+
+        # Elite affix: enraging (non-boss)
+        if self.enemy.get('elite') and 'enraging' in self.enemy.get('affixes', []) and not self.enemy.get('elite_enraged'):
+            if self.enemy['hp'] <= self.enemy['max_hp'] * 0.5:
+                self.enemy['elite_enraged'] = True
+                self.enemy['atk'] = int(self.enemy['atk'] * 1.25)
+                self.log += f"💢 The elite {self.enemy['name']} flies into a frenzy! ATK sharply increased!\n"
             
         target_pool = []
         taunters = [uid for uid, p in self.party.items() if self.combat_moves.get(uid) == "defend" and p['class'] == 'Tank' and p['hp'] > 0]
@@ -1027,11 +1054,26 @@ class RPGSession(discord.ui.View):
                     t_player['status_dur'] = 2
                     self.log += f" They were {self.enemy['effect']}ed!\n"
 
+                # Elite affix: vampiric (heal on hit)
+                if self.enemy.get('elite') and 'vampiric' in self.enemy.get('affixes', []) and dmg > 0:
+                    heal = max(1, dmg // 4)
+                    self.enemy['hp'] = min(self.enemy['max_hp'], self.enemy['hp'] + heal)
+                    self.log += f"🩸 The elite {self.enemy['name']} drinks {heal} HP from the wound!\n"
+
+                # Elite affix: hexing (extra burn debuff)
+                if self.enemy.get('elite') and 'hexing' in self.enemy.get('affixes', []) and t_player['status'] is None:
+                    if random.random() < 0.30:
+                        t_player['status'] = 'burn'
+                        t_player['status_dur'] = 2
+                        self.log += f"🧿 A vile hex ignites {t_player['user'].display_name}!\n"
+
     async def _process_enemy_death(self, interaction):
         stat_value = (self.enemy['max_hp'] * 0.8) + (self.enemy['atk'] * 4) + (self.enemy['def'] * 4)
         reward = int(stat_value + (self.floor * 10))
         if self.enemy.get('boss'):
             reward = int(reward * 2.5)
+        if self.enemy.get('elite'):
+            reward = int(reward * 1.35)
             
         if 'golden_idol' in self.relics:
             reward = int(reward * 1.5)
@@ -1040,6 +1082,8 @@ class RPGSession(discord.ui.View):
 
         base_xp = random.randint(15, 25) + (self.floor * 4)
         xp_yield = base_xp * 2 if self.enemy.get('boss') else base_xp
+        if self.enemy.get('elite'):
+            xp_yield = int(xp_yield * 1.25)
 
         for uid in self.get_alive_players():
             p = self.party[uid]
@@ -1081,6 +1125,33 @@ class RPGSession(discord.ui.View):
         # Small chance for environment effects based on theme
         self._apply_environment_hazard(alive_players)
 
+        # --- CLASS COMBO DETECTION ---
+        frontline_classes = {"Fighter", "Tank", "Paladin", "Berserker"}
+        caster_classes = {"Mage", "Warlock", "Cryomancer", "Venomancer", "Cleric"}
+
+        has_frontline_attack = any(
+            self.party[uid]['class'] in frontline_classes and self.combat_moves.get(uid) == "attack"
+            for uid in alive_players
+        )
+        has_caster_spell = any(
+            self.party[uid]['class'] in caster_classes and self.combat_moves.get(uid, "").startswith("spell_")
+            for uid in alive_players
+        )
+        combo_spellblade = has_frontline_attack and has_caster_spell
+
+        tank_defending = any(
+            self.party[uid]['class'] == "Tank" and self.combat_moves.get(uid) == "defend"
+            for uid in alive_players
+        )
+        assassin_attackers = {
+            uid for uid in alive_players
+            if self.party[uid]['class'] == "Assassin" and self.combat_moves.get(uid) == "attack"
+        }
+        combo_ambush = tank_defending and bool(assassin_attackers)
+
+        logged_spellblade = False
+        logged_ambush = False
+
         for uid in alive_players:
             p = self.party[uid]
             move = self.combat_moves.get(uid, "defend")
@@ -1100,10 +1171,29 @@ class RPGSession(discord.ui.View):
                 continue
 
             if move == "attack":
-                dmg = max(1, p['atk'] - self.enemy['def'] + random.randint(-2, 2))
+                # Perfect Ambush combo: Assassin attacks while a Tank defends (ignore enemy DEF)
+                if combo_ambush and uid in assassin_attackers:
+                    dmg = max(1, p['atk'] + random.randint(-2, 2))
+                    if not logged_ambush:
+                        self.log += "🩸 Perfect Ambush! The Assassin strikes while the Tank holds the line, ignoring enemy defenses!\n"
+                        logged_ambush = True
+                else:
+                    dmg = max(1, p['atk'] - self.enemy['def'] + random.randint(-2, 2))
+
                 if 'unleashed rage' in p['passives'] and p['hp'] <= (p['max_hp'] * 0.6):
                     dmg = int(dmg * 1.5)
                     self.log += f"💢 {p['user'].display_name}'s Unleashed Rage triggers (+50% DMG)!\n"
+
+                # Spellblade combo: frontline Attack + caster Spell in same round = +20% all basic attacks
+                if combo_spellblade:
+                    dmg = int(dmg * 1.2)
+                    if not logged_spellblade:
+                        self.log += "✨ Spellblade Combo! Frontliners channel arcane power and strike harder this round.\n"
+                        logged_spellblade = True
+
+                # Elite affix: shielded (reduce incoming basic attack damage)
+                if self.enemy.get('elite') and 'shielded' in self.enemy.get('affixes', []):
+                    dmg = max(1, int(dmg * 0.75))
                 
                 self.enemy['hp'] -= dmg
                 self.log += f"⚔️ {p['user'].display_name} attacks for {dmg}!\n"
