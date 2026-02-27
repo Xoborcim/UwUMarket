@@ -110,14 +110,17 @@ def callback():
     # Notify everyone that a player has entered
     broadcast_update('player_login', {'username': user_info['username']})
     
-    user_info = requests.get('https://discord.com/api/users/@me', 
-                             headers={'Authorization': f"Bearer {token_json['access_token']}"}).json()
+    user_info = requests.get(
+        'https://discord.com/api/users/@me',
+        headers={'Authorization': f"Bearer {token_json['access_token']}"}
+    ).json()
     
     user_id = int(user_info['id'])
     username = user_info['username']
+    avatar_hash = user_info.get('avatar')
     
-    # NEW: Sync the username to the DB immediately
-    run_async(db.sync_user_data(user_id, username))
+    # Sync the username and avatar to the DB immediately
+    run_async(db.sync_user_data(user_id, username, avatar_hash))
     
     session['user_id'] = user_id
     session['username'] = username
@@ -155,9 +158,49 @@ def profile(identifier):
     # Fetch equipped RPG gear for this player
     equipped = run_async(db.get_equipped_gear(player['user_id']))
     equipped_list = [dict(row) for row in equipped] if equipped else []
+
+    # Derive RPG stats similar to dungeon runs
+    from cogs.rpg import CLASSES, SHOP_GEAR  # local import to avoid heavy globals at startup
+    gear_data, class_name = run_async(db.get_rpg_profile(player['user_id']))
+    gear_names = [g.strip() for g in (gear_data.split(",") if gear_data else ["Rusty Dagger"]) if g.strip()]
+    base_cls = CLASSES.get(class_name, CLASSES["Fighter"])
+
+    total_atk_bonus = 0
+    total_def_bonus = 0
+    total_int_bonus = 0
+
+    for g in gear_names:
+        g_item = SHOP_GEAR.get(g, SHOP_GEAR["Rusty Dagger"])
+        total_atk_bonus += int(g_item.get("atk", 0) or 0)
+        total_def_bonus += int(g_item.get("def", 0) or 0)
+        total_int_bonus += int(g_item.get("int", 0) or 0)
+
+    for it in equipped_list:
+        total_atk_bonus += int(it.get("atk_bonus") or 0)
+        total_def_bonus += int(it.get("def_bonus") or 0)
+        total_int_bonus += int(it.get("int_bonus") or 0)
+
+    rpg_stats = {
+        "hp": base_cls["hp"],
+        "atk": total_atk_bonus + base_cls["atk_mod"],
+        "defense": 5 + total_def_bonus + base_cls["def_mod"],
+        "intelligence": total_int_bonus + base_cls["spell_mod"],
+    }
+
+    avatar_hash = player["avatar_hash"] if "avatar_hash" in player.keys() else None
+    avatar_url = None
+    if avatar_hash:
+        avatar_url = f"https://cdn.discordapp.com/avatars/{player['user_id']}/{avatar_hash}.png?size=256"
     
-    # Render the page with the found player data and equipped gear
-    return render_template('profile.html', player=player, equipped_gear=equipped_list, active_page="profile")
+    # Render the page with the found player data, equipped gear, and derived stats
+    return render_template(
+        'profile.html',
+        player=player,
+        equipped_gear=equipped_list,
+        rpg_stats=rpg_stats,
+        avatar_url=avatar_url,
+        active_page="profile",
+    )
 
 # --- MARKET ROUTES ---
 

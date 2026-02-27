@@ -78,10 +78,12 @@
     <div class="content-card">
         <div class="profile-container">
             <div class="profile-header">
+                {% if avatar_url %}
+                    <img src="{{ avatar_url }}" alt="Avatar" class="profile-avatar">
+                {% endif %}
                 <h1 class="profile-name">
                     {{ player['username'] or 'Citizen ' ~ player['user_id'] }}
                 </h1>
-                
                 <p class="discord-id">
                     Discord ID: {{ player['user_id'] }}
                 </p>
@@ -103,6 +105,22 @@
                 <div class="stat-card">
                     <div class="stat-label">Town Job</div>
                     <div class="stat-value">{{ player['job'] or 'Unemployed' }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Dungeon HP</div>
+                    <div class="stat-value">{{ rpg_stats.hp }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Attack</div>
+                    <div class="stat-value">{{ rpg_stats.atk }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Defense</div>
+                    <div class="stat-value">{{ rpg_stats.defense }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Intelligence</div>
+                    <div class="stat-value">{{ rpg_stats.intelligence }}</div>
                 </div>
             </div>
 
