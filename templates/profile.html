@@ -63,6 +63,11 @@
             padding: 20px 18px;
             border: 1px solid rgba(31, 41, 55, 0.9);
         }
+        @media (max-width: 768px) {
+            .profile-container { padding: 0; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .stat-card, .gear-box { padding: 16px; }
+        }
     </style>
 {% endblock %}
 

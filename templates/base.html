@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Polyville | {% block title %}{% endblock %}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
@@ -23,13 +23,16 @@
         }
 
         * { box-sizing: border-box; }
+        html { -webkit-tap-highlight-color: transparent; }
 
         body {
             margin: 0;
+            padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
             font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
             background: radial-gradient(circle at top, #1e293b 0, #020617 55%, #020617 100%);
             color: var(--text-main);
             min-height: 100vh;
+            min-height: -webkit-fill-available;
             display: flex;
             flex-direction: column;
         }
@@ -43,15 +46,20 @@
             backdrop-filter: blur(16px);
             border-bottom: 1px solid rgba(148, 163, 184, 0.12);
             padding: 0.75rem 6%;
+            padding-left: max(6%, env(safe-area-inset-left));
+            padding-right: max(6%, env(safe-area-inset-right));
             display: flex;
             align-items: center;
             justify-content: space-between;
+            flex-wrap: wrap;
         }
 
         .nav-left {
             display: flex;
             align-items: center;
             gap: 32px;
+            flex: 1;
+            min-width: 0;
         }
 
         .logo {
@@ -61,6 +69,7 @@
             text-decoration: none;
             text-transform: uppercase;
             letter-spacing: 0.15em;
+            white-space: nowrap;
         }
 
         .nav-links {
@@ -73,6 +82,7 @@
             text-decoration: none;
             color: var(--text-muted);
             font-weight: 600;
+            padding: 6px 0;
             padding-bottom: 4px;
             border-bottom: 2px solid transparent;
             transition: color 0.15s ease, border-color 0.15s ease;
@@ -87,17 +97,35 @@
             border-color: var(--accent-color);
         }
 
+        .nav-toggle {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border: none;
+            background: rgba(31, 41, 55, 0.9);
+            border-radius: 10px;
+            color: var(--text-main);
+            cursor: pointer;
+            font-size: 1.4rem;
+        }
+        .nav-toggle:hover { background: rgba(55, 65, 81, 0.9); }
+
         .user-status {
             display: flex;
             align-items: center;
             gap: 12px;
+            flex-shrink: 0;
         }
 
         .user-pill {
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 6px 14px;
+            padding: 8px 14px;
+            min-height: 44px;
             border-radius: 999px;
             background: rgba(31, 41, 55, 0.9);
             border: 1px solid rgba(55, 65, 81, 0.7);
@@ -120,12 +148,19 @@
             color: var(--text-muted);
             font-size: 0.75rem;
             text-decoration: none;
+            padding: 8px 4px;
+            min-height: 44px;
+            display: inline-flex;
+            align-items: center;
         }
 
         /* MAIN LAYOUT */
         .page-shell {
             flex: 1;
-            padding: 32px 6% 40px;
+            padding: 32px 6%;
+            padding-left: max(6%, env(safe-area-inset-left));
+            padding-right: max(6%, env(safe-area-inset-right));
+            padding-bottom: max(40px, env(safe-area-inset-bottom));
         }
 
         .page-header {
@@ -134,6 +169,7 @@
             justify-content: space-between;
             margin-bottom: 24px;
             gap: 16px;
+            flex-wrap: wrap;
         }
 
         .page-title {
@@ -151,7 +187,8 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 4px 10px;
+            padding: 8px 12px;
+            min-height: 36px;
             border-radius: 999px;
             background: var(--accent-soft);
             color: #fecaca;
@@ -170,11 +207,14 @@
         footer {
             border-top: 1px solid rgba(30, 64, 175, 0.25);
             padding: 10px 6% 14px;
+            padding-bottom: max(14px, env(safe-area-inset-bottom));
             font-size: 0.78rem;
             color: var(--text-muted);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
             background: #020617;
         }
 
@@ -183,25 +223,90 @@
             text-decoration: none;
         }
 
+        /* --- MOBILE --- */
         @media (max-width: 768px) {
             nav {
-                padding: 0.75rem 4%;
+                padding: 0.6rem 4%;
+                padding-left: max(4%, env(safe-area-inset-left));
+                padding-right: max(4%, env(safe-area-inset-right));
+            }
+            .nav-left {
+                gap: 12px;
+            }
+            .logo { font-size: 1.1rem; letter-spacing: 0.08em; }
+            .nav-toggle {
+                display: flex;
+                order: 1;
             }
             .nav-links {
                 display: none;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: rgba(15, 23, 42, 0.98);
+                backdrop-filter: blur(16px);
+                border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+                flex-direction: column;
+                gap: 0;
+                padding: 12px 0;
+                max-height: 70vh;
+                overflow-y: auto;
+            }
+            nav.nav-open .nav-links {
+                display: flex;
+            }
+            .nav-links a {
+                padding: 14px 20px;
+                min-height: 48px;
+                display: flex;
+                align-items: center;
+                border-bottom: none;
+                border-left: 3px solid transparent;
+            }
+            .nav-links a.active { border-left-color: var(--accent-color); }
+            .user-status {
+                gap: 8px;
+            }
+            .user-pill {
+                padding: 6px 10px;
+                font-size: 0.8rem;
+            }
+            .user-pill span:not(.separator):first-of-type {
+                max-width: 90px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
             .page-shell {
-                padding: 24px 4% 32px;
+                padding: 20px 4%;
+                padding-left: max(4%, env(safe-area-inset-left));
+                padding-right: max(4%, env(safe-area-inset-right));
             }
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+            .page-title { font-size: 1.45rem; }
+            .page-subtitle { font-size: 0.9rem; }
+            .content-card {
+                padding: 18px 16px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .user-pill span.separator { display: none; }
         }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
 
-    <nav>
+    <nav id="main-nav">
         <div class="nav-left">
             <a href="/market" class="logo">Polyville</a>
+            <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Open menu">☰</button>
             <div class="nav-links">
                 <a href="/market" class="{% if active_page == 'market' %}active{% endif %}">Market</a>
                 <a href="/inventory" class="{% if active_page == 'inventory' %}active{% endif %}">Inventory</a>
@@ -251,6 +356,15 @@
         }
         fetchLiveGoldBase();
         setInterval(fetchLiveGoldBase, 10000);
+        document.getElementById('nav-toggle')?.addEventListener('click', function() {
+            document.getElementById('main-nav').classList.toggle('nav-open');
+            this.setAttribute('aria-label', document.getElementById('main-nav').classList.contains('nav-open') ? 'Close menu' : 'Open menu');
+        });
+        document.querySelectorAll('.nav-links a').forEach(function(a) {
+            a.addEventListener('click', function() {
+                document.getElementById('main-nav').classList.remove('nav-open');
+            });
+        });
     </script>
 
     {% block extra_scripts %}{% endblock %}

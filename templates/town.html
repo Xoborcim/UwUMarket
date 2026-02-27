@@ -38,6 +38,11 @@
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 18px;
         }
+        @media (max-width: 768px) {
+            .town-header { padding: 24px 16px; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .action-box input, .action-box button { min-height: 44px; }
+        }
         .stat-card {
             background: rgba(8, 14, 36, 0.95);
             border-radius: 16px;

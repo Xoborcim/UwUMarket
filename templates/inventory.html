@@ -181,6 +181,14 @@
         }
         .scrap-duplicates-btn:hover { background: #dc2626; }
         .scrap-duplicates-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        @media (max-width: 768px) {
+            .inventory-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; }
+            .inventory-toolbar { flex-direction: column; align-items: stretch; }
+            .inventory-toolbar select { width: 100%; max-width: 200px; min-height: 44px; }
+            .scrap-duplicates-btn { min-height: 44px; }
+            .button-group .sell-button, .button-group .scrap-button { min-height: 44px; }
+            .modal-content { width: 90%; max-width: 340px; margin: 1rem; }
+        }
     </style>
 {% endblock %}
 

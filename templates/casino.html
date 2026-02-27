@@ -376,6 +376,26 @@
         box-shadow: 0 0 16px var(--accent-soft);
     }
     .msg-err { color: #f87171; font-size: 0.9rem; margin-top: 8px; }
+    @media (max-width: 768px) {
+        .casino-page { padding: 16px 12px; }
+        .casino-header h1 { font-size: 1.4rem; }
+        .game-tabs { gap: 6px; }
+        .game-tab { padding: 12px 14px; min-height: 44px; }
+        .game-card { padding: 16px; }
+        .bet-row { flex-direction: column; align-items: stretch; }
+        .bet-row input[type="number"] { width: 100%; max-width: 160px; min-height: 44px; }
+        .btn-casino { min-height: 44px; padding: 12px 16px; }
+        .slots-reels { font-size: 2.2rem; padding: 16px; gap: 10px; }
+        .slots-reels .reel-wrap { width: 56px; height: 64px; }
+        .roulette-wheel-outer { width: 160px; height: 160px; }
+        .roulette-number { font-size: 2.5rem; }
+        .plinko-drop-zone { height: 280px; }
+        .plinko-chip { width: 26px; height: 26px; }
+        .mines-grid { max-width: 100%; }
+        .mines-tile { min-height: 44px; }
+        .bj-actions { gap: 8px; }
+        .bj-actions .btn-casino { flex: 1; min-width: 0; }
+    }
 </style>
 {% endblock %}
 
