@@ -1,46 +1,57 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Polyville | Unboxing</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+{% extends "base.html" %}
+
+{% block title %}Lootboxes{% endblock %}
+
+{% block extra_head %}
     <style>
-        :root {
-            --bg-color: #0f0f1b; --card-bg: #16213e; --accent-color: #e94560;
-            --text-main: #ffffff; --text-muted: #94a3b8; --border-color: #1e293b;
-            --common: #b2bec3; --uncommon: #2ecc71; --rare: #3498db; 
-            --epic: #9b59b6; --legendary: #f1c40f; --mythic: #e74c3c;
+        .lootbox-container {
+            max-width: 820px;
+            margin: 0 auto;
+            text-align: center;
         }
-        body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; }
-        nav { background: #1a1a2e; padding: 1rem 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); }
-        .logo { font-weight: 800; font-size: 1.5rem; color: var(--accent-color); text-decoration: none; text-transform: uppercase; letter-spacing: 2px;}
-        .user-status { display: flex; align-items: center; gap: 15px; }
-        .user-info { background: var(--border-color); padding: 8px 15px; border-radius: 20px; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; }
-        
-        .container { max-width: 800px; margin: 60px auto; text-align: center; }
-        
         select {
-            background: var(--card-bg); color: white; border: 1px solid var(--border-color);
-            padding: 10px 20px; font-size: 1.1rem; border-radius: 8px; margin-bottom: 20px; cursor: pointer;
+            background: var(--card-bg);
+            color: white;
+            border: 1px solid var(--border-color);
+            padding: 10px 20px;
+            font-size: 1.05rem;
+            border-radius: 999px;
+            margin-bottom: 20px;
+            cursor: pointer;
         }
-
         .unboxing-stage {
-            background: var(--card-bg); border: 2px dashed var(--border-color); border-radius: 20px;
-            padding: 50px 20px; margin-top: 10px; min-height: 400px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: radial-gradient(circle at top, #111827 0, #020617 60%);
+            border-radius: 20px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            padding: 40px 20px;
+            margin-top: 10px;
+            min-height: 360px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-shadow: 0 24px 70px rgba(15, 23, 42, 0.9);
         }
-
-        .box-icon { font-size: 100px; margin-bottom: 20px; transition: transform 0.2s; }
-
+        .box-icon {
+            font-size: 96px;
+            margin-bottom: 20px;
+            transition: transform 0.2s;
+        }
         .open-btn {
-            background: var(--accent-color); color: white; border: none; padding: 15px 40px;
-            border-radius: 10px; font-size: 1.2rem; font-weight: 800; cursor: pointer; text-transform: uppercase;
-            box-shadow: 0 5px 15px rgba(233, 69, 96, 0.4); transition: transform 0.1s, background 0.2s;
+            background: linear-gradient(90deg, #ff4b8b, #6366f1);
+            color: white;
+            border: none;
+            padding: 14px 38px;
+            border-radius: 999px;
+            font-size: 1.05rem;
+            font-weight: 800;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 10px 35px rgba(99, 102, 241, 0.6);
         }
-        .open-btn:hover { background: #ff4d6d; transform: scale(1.05); }
+        .open-btn:hover { transform: translateY(-1px) scale(1.02); }
         .open-btn:disabled { background: #475569; cursor: not-allowed; box-shadow: none; transform: none;}
-
         .shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
         @keyframes shake {
             10%, 90% { transform: translate3d(-2px, 0, 0); }
@@ -48,89 +59,90 @@
             30%, 50%, 70% { transform: translate3d(-8px, 0, 0); }
             40%, 60% { transform: translate3d(8px, 0, 0); }
         }
-
         .revealed-item {
-            display: none; background: #0f0f1b; border: 2px solid; border-radius: 15px;
-            padding: 20px; width: 250px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-top: 20px;
+            display: none;
+            background: #020617;
+            border: 2px solid;
+            border-radius: 15px;
+            padding: 20px;
+            width: 250px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+            margin-top: 22px;
         }
-        .item-image { width: 100%; height: 150px; object-fit: contain; margin-bottom: 15px; }
-        .tier-label { font-size: 0.8rem; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
-        .item-name { font-size: 1.4rem; font-weight: bold; margin: 5px 0; color: white;}
-
+        .reward-image {
+            width: 100%;
+            height: 150px;
+            object-fit: contain;
+            margin-bottom: 15px;
+        }
+        .tier-label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+        }
+        .reward-name {
+            font-size: 1.3rem;
+            font-weight: 800;
+            margin-top: 6px;
+        }
         .tier-Common { border-color: var(--common); color: var(--common); }
         .tier-Uncommon { border-color: var(--uncommon); color: var(--uncommon); }
         .tier-Rare { border-color: var(--rare); color: var(--rare); }
         .tier-Epic { border-color: var(--epic); color: var(--epic); }
-        .tier-Legendary { border-color: var(--legendary); color: var(--legendary); box-shadow: 0 0 30px rgba(241, 196, 15, 0.3); }
-        .tier-Mythic { border-color: var(--mythic); color: var(--mythic); box-shadow: 0 0 40px rgba(231, 76, 60, 0.4); }
-
-        #error-msg { color: #e74c3c; font-weight: bold; margin-top: 15px; height: 20px; }
+        .tier-Legendary { border-color: var(--legendary); color: var(--legendary); box-shadow: 0 0 30px rgba(250, 204, 21, 0.4); }
+        .tier-Mythic { border-color: var(--mythic); color: var(--mythic); box-shadow: 0 0 40px rgba(251, 113, 133, 0.5); }
+        #error-msg {
+            color: #fca5a5;
+            font-weight: 600;
+            margin-top: 15px;
+            min-height: 20px;
+        }
     </style>
-</head>
-<body>
+{% endblock %}
 
-    <nav>
-        <div style="display: flex; gap: 30px; align-items: center;">
-            <a href="/market" class="logo">Polyville</a>
-            <a href="/exchange" style="color: white; text-decoration: none; font-weight: 600;">Exchange 📈</a>
-            <a href="/town" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Town Hall</a>
-            <a href="/market" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Market</a>
-            <a href="/lootbox" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Lootboxes</a>
-            <a href="/inventory" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Inventory</a>
-            <a href="/leaderboard" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Leaderboard</a>
-            
+{% block content %}
+    <div class="page-header">
+        <div>
+            <div class="page-title">Lootboxes</div>
+            <div class="page-subtitle">Crack open neon crates for rare cosmetics and RPG gear.</div>
         </div>
-        <div class="user-status">
-            <a href="/profile/{{ session['user_id'] }}" class="user-info" style="text-decoration: none; color: white; cursor: pointer;">
-                <span>👤 <strong>{{ session['username'] }}</strong></span>
-                <span style="color: #475569;">|</span>
-                <span id="gold-counter" style="color: #f1c40f; font-weight: bold; font-family: monospace; font-size: 1.1em;">💰 Loading...</span>
-                </a>
-            <a href="/logout" style="color: var(--text-muted); font-size: 0.8rem; text-decoration: none;">Logout</a>
-        </div>
-    </nav>
+        <div class="pill">🎰 Gacha</div>
+    </div>
 
-    <div class="container">
-        <h1>Purchase a Lootbox</h1>
-        <p style="color: var(--text-muted)">Costs $10,000.00 to roll for a random item.</p>
+    <div class="content-card">
+        <div class="lootbox-container">
+            <h2 style="margin-top:0;">Purchase a Lootbox</h2>
+            <p style="color: var(--text-muted); margin-bottom: 18px;">Each roll costs <strong>$10,000.00</strong> of in‑game gold.</p>
 
-        <select id="set-selector">
-            {% for set_name in available_sets %}
-                <option value="{{ set_name }}">{{ set_name | replace('_', ' ') }}</option>
-            {% endfor %}
-            {% if not available_sets %}
-                <option value="Base_Set">Base Set</option>
-            {% endif %}
-        </select>
+            <select id="set-selector">
+                {% for set_name in available_sets %}
+                    <option value="{{ set_name }}">{{ set_name | replace('_', ' ') }}</option>
+                {% endfor %}
+                {% if not available_sets %}
+                    <option value="Base_Set">Base Set</option>
+                {% endif %}
+            </select>
 
-        <div class="unboxing-stage">
-            <div id="box-visual" class="box-icon">📦</div>
-            
-            <button id="open-btn" class="open-btn" onclick="openLootbox()">Open Box ($10,000)</button>
-            <div id="error-msg"></div>
+            <div class="unboxing-stage">
+                <div id="box-visual" class="box-icon">📦</div>
+                
+                <button id="open-btn" class="open-btn" onclick="openLootbox()">Open Box ($10,000)</button>
+                <div id="error-msg"></div>
 
-            <div id="reward-card" class="revealed-item">
-                <div id="reward-tier" class="tier-label"></div>
-                <img id="reward-image" class="item-image" src="">
-                <div id="reward-name" class="item-name"></div>
+                <div id="reward-card" class="revealed-item">
+                    <div id="reward-tier" class="tier-label"></div>
+                    <img id="reward-image" class="reward-image" src="">
+                    <div id="reward-name" class="reward-name"></div>
+                </div>
             </div>
         </div>
     </div>
+{% endblock %}
 
+{% block extra_scripts %}
     <script>
-        async function fetchLiveGold() {
-            try {
-                const response = await fetch('/api/gold');
-                const data = await response.json();
-                if (data.success) {
-                    const formattedGold = data.gold.toLocaleString('en-US', {minimumFractionDigits: 2});
-                    document.getElementById('gold-counter').innerText = '💰 $' + formattedGold;
-                }
-            } catch (error) {}
-        }
-        fetchLiveGold();
-        setInterval(fetchLiveGold, 3000);
-
         async function openLootbox() {
             const btn = document.getElementById('open-btn');
             const box = document.getElementById('box-visual');
@@ -144,7 +156,6 @@
             btn.innerText = "Unlocking...";
 
             try {
-                // Send the selected set to Python using JSON
                 const response = await fetch('/api/open_box', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -159,9 +170,10 @@
                     return;
                 }
 
-                fetchLiveGold(); // Update gold immediately
+                if (typeof fetchLiveGoldBase === 'function') {
+                    fetchLiveGoldBase();
+                }
 
-                // Play Animation
                 box.innerText = "📦";
                 box.classList.add('shake');
                 
@@ -188,5 +200,5 @@
             }
         }
     </script>
-</body>
-</html>
+{% endblock %}
+

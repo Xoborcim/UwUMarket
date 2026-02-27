@@ -1,154 +1,168 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Polyville | Exchange</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+{% extends "base.html" %}
+
+{% block title %}Exchange{% endblock %}
+
+{% block extra_head %}
     <style>
-        :root {
-            --bg-color: #0f0f1b; --card-bg: #16213e; --accent-color: #e94560;
-            --text-main: #ffffff; --text-muted: #94a3b8; --border-color: #1e293b;
-            --yes-color: #2ecc71; --no-color: #e74c3c;
+        .container-exchange {
+            max-width: 1000px;
+            margin: 0 auto;
         }
-        body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; }
-        nav { background: #1a1a2e; padding: 1rem 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100; }
-        .logo { font-weight: 800; font-size: 1.5rem; color: var(--accent-color); text-decoration: none; text-transform: uppercase; letter-spacing: 2px;}
-        .user-info { background: var(--border-color); padding: 8px 15px; border-radius: 20px; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; text-decoration: none; color: white; cursor: pointer; }
-        
-        .container { max-width: 1000px; margin: 40px auto; padding: 0 20px; }
-        header { text-align: center; margin-bottom: 50px; }
-        header h1 { font-size: 3rem; margin-bottom: 10px; }
-
-        .market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 30px; }
-        
+        .market-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+            gap: 22px;
+        }
         .market-card {
-            background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color);
-            padding: 25px; transition: transform 0.2s, border-color 0.2s; display: flex; flex-direction: column;
+            background: rgba(8, 14, 36, 0.95);
+            border-radius: 16px;
+            border: 1px solid rgba(31, 41, 55, 0.9);
+            padding: 18px 18px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
-        .market-card:hover { transform: translateY(-5px); border-color: #3498db; }
-        
-        .market-question { font-size: 1.4rem; font-weight: 800; margin-bottom: 10px; line-height: 1.3; }
-        .market-stats { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px; display: flex; justify-content: space-between; }
-        
-        /* The Odds Progress Bar */
-        .odds-bar-container { width: 100%; height: 12px; background: #0f0f1b; border-radius: 6px; overflow: hidden; display: flex; margin-bottom: 10px; }
-        .odds-segment { height: 100%; transition: width 0.5s ease; }
-        .odds-labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 0.9rem; margin-bottom: 25px; }
-
-        .bet-interface { background: #0f0f1b; padding: 15px; border-radius: 10px; border: 1px solid var(--border-color); margin-top: auto;}
-        .bet-input { width: 100%; padding: 10px; background: var(--card-bg); border: 1px solid var(--border-color); color: white; border-radius: 5px; font-size: 1rem; box-sizing: border-box; margin-bottom: 10px; text-align: center;}
-        
-        .bet-buttons { display: flex; gap: 10px; }
-        .btn-bet { flex: 1; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: filter 0.2s; text-transform: uppercase;}
-        .btn-bet:hover { filter: brightness(1.2); }
-        
-        .empty-state { text-align: center; padding: 100px 20px; color: var(--text-muted); }
+        .market-question {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .market-stats {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        .odds-bar-container {
+            width: 100%;
+            height: 10px;
+            background: #020617;
+            border-radius: 999px;
+            overflow: hidden;
+            display: flex;
+        }
+        .odds-segment {
+            height: 100%;
+            transition: width 0.35s ease;
+        }
+        .odds-labels {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+            font-size: 0.8rem;
+            margin-top: 6px;
+            margin-bottom: 8px;
+        }
+        .bet-interface {
+            background: #020617;
+            border-radius: 12px;
+            border: 1px solid rgba(31, 41, 55, 0.85);
+            padding: 12px;
+            margin-top: auto;
+        }
+        .bet-input {
+            width: 100%;
+            padding: 8px;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(55, 65, 81, 0.9);
+            color: white;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            text-align: center;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        .bet-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .btn-bet {
+            flex: 1;
+            color: white;
+            border: none;
+            padding: 9px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 80px 16px;
+            color: var(--text-muted);
+        }
     </style>
-</head>
-<body>
+{% endblock %}
 
-    <nav>
-        <div style="display: flex; gap: 30px; align-items: center;">
-            <a href="/market" class="logo">Polyville</a>
-            <a href="/exchange" style="color: white; text-decoration: none; font-weight: 600;">Exchange 📈</a>
-            <a href="/town" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Town Hall</a>
-            <a href="/market" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Market</a>
-            <a href="/lootbox" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Lootboxes</a>
-            <a href="/inventory" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Inventory</a>
-            <a href="/leaderboard" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Leaderboard</a>
-            
+{% block content %}
+    <div class="page-header">
+        <div>
+            <div class="page-title">Prediction Exchange</div>
+            <div class="page-subtitle">Trade shares on future events. Prices reflect live probabilities.</div>
         </div>
-        <div class="user-status">
-            {% if session.get('user_id') %}
-            <a href="/profile/{{ session['user_id'] }}" class="user-info">
-                <span>👤 <strong>{{ session['username'] }}</strong></span>
-                <span style="color: #475569;">|</span>
-                <span id="gold-counter" style="color: #f1c40f; font-weight: bold; font-family: monospace; font-size: 1.1em;">💰 Loading...</span>
-            </a>
-            {% else %}
-                <a href="/login" class="user-info" style="background: #5865F2; border: none;">Login with Discord</a>
-            {% endif %}
-        </div>
-    </nav>
-
-    <div class="container">
-        <header>
-            <h1>Prediction Exchange</h1>
-            <p style="color: var(--text-muted)">Trade shares on the outcome of future events. Prices reflect the current probability.</p>
-        </header>
-
-        <div id="notification-banner" style="display: none; padding: 15px; margin-bottom: 30px; border-radius: 8px; text-align: center; font-weight: bold; color: white;"></div>
-
-        {% if not markets %}
-            <div class="empty-state">
-                <h2>📈 No active markets.</h2>
-                <p>Create a prediction market using the Discord bot first!</p>
-            </div>
-        {% else %}
-            <div class="market-grid">
-                {% for market in markets %}
-                <div class="market-card">
-                    <div class="market-question">{{ market.question }}</div>
-                    <div class="market-stats">
-                        <span>Vol: ${{ "{:,.2f}".format(market.volume) }}</span>
-                        <span>Closes: {{ market.close_time }}</span>
-                    </div>
-
-                    <div class="odds-bar-container">
-                        {% for o in market.outcomes %}
-                            {% set bg_color = '#3498db' %}
-                            {% if o.label | upper == 'YES' %}{% set bg_color = 'var(--yes-color)' %}{% endif %}
-                            {% if o.label | upper == 'NO' %}{% set bg_color = 'var(--no-color)' %}{% endif %}
-                            
-                            <div class="odds-segment" style="width: {{ o.percent }}%; background-color: {{ bg_color }};" title="{{ o.label }}: {{ o.percent | round(1) }}%"></div>
-                        {% endfor %}
-                    </div>
-                    
-                    <div class="odds-labels">
-                        {% for o in market.outcomes %}
-                            {% set text_color = '#3498db' %}
-                            {% if o.label | upper == 'YES' %}{% set text_color = 'var(--yes-color)' %}{% endif %}
-                            {% if o.label | upper == 'NO' %}{% set text_color = 'var(--no-color)' %}{% endif %}
-                            
-                            <span style="color: {{ text_color }}">{{ o.label }} ({{ o.percent | int }}¢)</span>
-                        {% endfor %}
-                    </div>
-
-                    <div class="bet-interface">
-                        <input type="number" id="bet-amt-{{ market.market_id }}" class="bet-input" placeholder="Investment ($)" min="0.01" step="0.01">
-                        <div class="bet-buttons">
-                            {% for o in market.outcomes %}
-                                {% set bg_color = '#3498db' %}
-                                {% if o.label | upper == 'YES' %}{% set bg_color = 'var(--yes-color)' %}{% endif %}
-                                {% if o.label | upper == 'NO' %}{% set bg_color = 'var(--no-color)' %}{% endif %}
-                                
-                                <button class="btn-bet" style="background-color: {{ bg_color }};" onclick="submitBet({{ market.market_id }}, '{{ o.label }}')">Buy {{ o.label }}</button>
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        {% endif %}
+        <div class="pill">📈 Markets</div>
     </div>
 
-    <script>
-        // Live Gold Counter
-        async function fetchLiveGold() {
-            try {
-                const response = await fetch('/api/gold');
-                const data = await response.json();
-                if (data.success) {
-                    const formattedGold = data.gold.toLocaleString('en-US', {minimumFractionDigits: 2});
-                    document.getElementById('gold-counter').innerText = '💰 $' + formattedGold;
-                }
-            } catch (error) {}
-        }
-        fetchLiveGold();
-        setInterval(fetchLiveGold, 10000);
+    <div class="content-card">
+        <div class="container-exchange">
+            <div id="notification-banner" style="display: none; padding: 12px; margin-bottom: 18px; border-radius: 10px; text-align: center; font-weight: 600; color: white;"></div>
 
-        // --- BETTING LOGIC ---
+            {% if not markets %}
+                <div class="empty-state">
+                    <h2>📈 No active markets.</h2>
+                    <p>Create a prediction market using the Discord bot first!</p>
+                </div>
+            {% else %}
+                <div class="market-grid">
+                    {% for market in markets %}
+                    <div class="market-card">
+                        <div class="market-question">{{ market.question }}</div>
+                        <div class="market-stats">
+                            <span>Vol: ${{ "{:,.2f}".format(market.volume) }}</span>
+                            <span>Closes: {{ market.close_time }}</span>
+                        </div>
+
+                        <div class="odds-bar-container">
+                            {% for o in market.outcomes %}
+                                {% set bg_color = '#3b82f6' %}
+                                {% if o.label | upper == 'YES' %}{% set bg_color = '#22c55e' %}{% endif %}
+                                {% if o.label | upper == 'NO' %}{% set bg_color = '#ef4444' %}{% endif %}
+                                
+                                <div class="odds-segment" style="width: {{ o.percent }}%; background-color: {{ bg_color }};" title="{{ o.label }}: {{ o.percent | round(1) }}%"></div>
+                            {% endfor %}
+                        </div>
+                        
+                        <div class="odds-labels">
+                            {% for o in market.outcomes %}
+                                {% set text_color = '#3b82f6' %}
+                                {% if o.label | upper == 'YES' %}{% set text_color = '#22c55e' %}{% endif %}
+                                {% if o.label | upper == 'NO' %}{% set text_color = '#ef4444' %}{% endif %}
+                                
+                                <span style="color: {{ text_color }}">{{ o.label }} ({{ o.percent | int }}¢)</span>
+                            {% endfor %}
+                        </div>
+
+                        <div class="bet-interface">
+                            <input type="number" id="bet-amt-{{ market.market_id }}" class="bet-input" placeholder="Investment ($)" min="0.01" step="0.01">
+                            <div class="bet-buttons">
+                                {% for o in market.outcomes %}
+                                    {% set bg_color = '#3b82f6' %}
+                                    {% if o.label | upper == 'YES' %}{% set bg_color = '#22c55e' %}{% endif %}
+                                    {% if o.label | upper == 'NO' %}{% set bg_color = '#ef4444' %}{% endif %}
+                                    
+                                    <button class="btn-bet" style="background-color: {{ bg_color }};" onclick="submitBet({{ market.market_id }}, '{{ o.label }}')">Buy {{ o.label }}</button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_scripts %}
+    <script>
         async function submitBet(marketId, outcomeLabel) {
             const inputField = document.getElementById(`bet-amt-${marketId}`);
             const investment = inputField.value;
@@ -176,12 +190,10 @@
                 banner.style.display = 'block';
 
                 if (result.success) {
-                    banner.style.backgroundColor = '#2ecc71';
-                    fetchLiveGold();
-                    // Reload the page after 2 seconds so the odds progress bars update!
+                    banner.style.backgroundColor = '#22c55e';
                     setTimeout(() => { window.location.reload(); }, 2000);
                 } else {
-                    banner.style.backgroundColor = '#e74c3c';
+                    banner.style.backgroundColor = '#ef4444';
                 }
 
             } catch (error) {
@@ -189,5 +201,5 @@
             }
         }
     </script>
-</body>
-</html>
+{% endblock %}
+
