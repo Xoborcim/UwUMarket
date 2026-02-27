@@ -1,5 +1,6 @@
 import os
 import random
+import re
 import requests
 import aiosqlite
 import asyncio
@@ -83,9 +84,12 @@ def _lootbox_image_exists(set_name: str, tier: str, name: str) -> bool:
     full_exact = os.path.join(dir_path, target)
     if os.path.exists(full_exact):
         return True
-    lower_target = target.lower()
+    # Normalize: ignore case, spaces, underscores and other punctuation
+    def _norm(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+    norm_target = _norm(target)
     for candidate in os.listdir(dir_path):
-        if candidate.lower() == lower_target:
+        if _norm(candidate) == norm_target:
             return True
     return False
 
