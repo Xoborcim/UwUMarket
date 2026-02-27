@@ -254,7 +254,7 @@ def api_scrap_item():
 def lootbox_page():
     if 'user_id' not in session: return redirect(url_for('login'))
     available_sets = [d for d in os.listdir("lootboxes") if os.path.isdir(os.path.join("lootboxes", d))] if os.path.exists("lootboxes") else []
-    return render_template('lootbox.html', available_sets=available_sets)
+    return render_template('lootbox.html', available_sets=available_sets, active_page="lootbox")
 
 @app.route('/api/open_box', methods=['POST'])
 def api_open_box():
@@ -399,6 +399,35 @@ def exchange():
         })
         
     return render_template('exchange.html', markets=markets_data, active_page="exchange")
+
+
+@app.route('/rpg_stats')
+def rpg_stats_page():
+    async def get_rpg_stats():
+        async with aiosqlite.connect(DB_NAME) as db_conn:
+            db_conn.row_factory = aiosqlite.Row
+
+            async with db_conn.execute(
+                "SELECT COUNT(*) AS player_count, AVG(max_floor) AS avg_floor, MAX(max_floor) AS max_floor FROM users"
+            ) as c:
+                overall = await c.fetchone()
+
+            async with db_conn.execute(
+                """
+                SELECT COALESCE(rpg_class, 'Unassigned') AS rpg_class,
+                       COUNT(*) AS count,
+                       AVG(max_floor) AS avg_floor
+                FROM users
+                GROUP BY COALESCE(rpg_class, 'Unassigned')
+                ORDER BY count DESC
+                """
+            ) as c:
+                classes = await c.fetchall()
+
+        return overall, classes
+
+    overall, classes = run_async(get_rpg_stats())
+    return render_template('rpg_stats.html', overall=overall, classes=classes, active_page="rpg_stats")
 
 @app.route('/api/buy_shares', methods=['POST'])
 def api_buy_shares():
