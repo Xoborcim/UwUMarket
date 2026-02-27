@@ -171,6 +171,50 @@ class MarketGalleryUI(discord.ui.View):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+# --- EQUIP UI ---
+
+class EquipSelect(discord.ui.Select):
+    def __init__(self, owner_id: int, items):
+        self.owner_id = owner_id
+        options = []
+        for item in items:
+            data = dict(item)
+            item_id = data["item_id"]
+            name = data["item_name"]
+            slot = (data.get("slot") or "misc").title()
+            equipped = bool(data.get("is_equipped"))
+            label = f"{name}{' (Equipped)' if equipped else ''}"
+            description = f"{slot} • ID {item_id}"
+            options.append(
+                discord.SelectOption(
+                    label=label[:100],
+                    description=description[:100],
+                    value=str(item_id),
+                )
+            )
+        placeholder = "Select equipment to equip..."
+        super().__init__(placeholder=placeholder, min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.owner_id:
+            return await interaction.response.send_message("❌ This menu belongs to someone else.", ephemeral=True)
+        try:
+            item_id = int(self.values[0])
+        except ValueError:
+            return await interaction.response.send_message("❌ Invalid selection.", ephemeral=True)
+        success, msg = await db.equip_inventory_item(self.owner_id, item_id)
+        if success:
+            await interaction.response.send_message(f"✅ {msg}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+
+
+class EquipView(discord.ui.View):
+    def __init__(self, owner_id: int, items):
+        super().__init__(timeout=60)
+        self.add_item(EquipSelect(owner_id, items))
+
+
 # --- MAIN COG ---
 
 class Items(commands.Cog):
@@ -335,7 +379,9 @@ class Items(commands.Cog):
             slot_str = f" — *{slot}*" if slot else ""
             desc += f"`ID: {item['item_id']}` | **{item['item_name']}** ({item['tier']}){slot_str}{eq}\n"
         embed.description = desc
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        equippable = [i for i in items if dict(i).get("slot")]
+        view = EquipView(interaction.user.id, equippable) if equippable else None
+        await interaction.response.send_message(embed=embed, ephemeral=True, view=view)
 
     @app_commands.command(name="equip", description="Equip a weapon/armor/mage item from your inventory (only one per slot).")
     async def equip(self, interaction: discord.Interaction, item_id: int):
