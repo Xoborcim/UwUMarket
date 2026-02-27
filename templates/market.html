@@ -1,236 +1,141 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Polyville | Global Market</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+{% extends "base.html" %}
+
+{% block title %}Market{% endblock %}
+
+{% block extra_head %}
     <style>
-        :root {
-            --bg-color: #0f0f1b;
-            --card-bg: #16213e;
-            --accent-color: #e94560;
-            --text-main: #ffffff;
-            --text-muted: #94a3b8;
-            --border-color: #1e293b;
-            
-            /* Tier Colors */
-            --common: #b2bec3;
-            --uncommon: #2ecc71;
-            --rare: #3498db;
-            --epic: #9b59b6;
-            --legendary: #f1c40f;
-            --mythic: #e74c3c;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            margin: 0;
-            padding: 0;
-            line-height: 1.6;
-        }
-
-        /* --- NAVIGATION BAR --- */
-        nav {
-            background: #1a1a2e;
-            padding: 1rem 5%;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid var(--border-color);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .logo {
-            font-weight: 800;
-            font-size: 1.5rem;
-            color: var(--accent-color);
-            text-decoration: none;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-
-        .nav-links a {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-weight: 600;
-            margin-right: 20px;
-            transition: color 0.2s;
-        }
-
-        .nav-links a:hover { color: var(--accent-color); }
-
-        .user-status {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .login-btn {
-            background: #5865F2;
-            color: white;
-            text-decoration: none;
-            padding: 8px 20px;
-            border-radius: 5px;
-            font-weight: bold;
-        }
-
-        .user-info {
-            background: var(--border-color);
-            padding: 8px 15px;
-            border-radius: 20px;
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            text-decoration: none;
-            color: white;
-        }
-
-        /* --- MARKET GRID --- */
-        .container {
-            max-width: 1200px;
-            margin: 40px auto;
-            padding: 0 20px;
-        }
-
-        header {
-            text-align: center;
-            margin-bottom: 50px;
-        }
-
         .market-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 30px;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 24px;
         }
-
         .item-card {
-            background: var(--card-bg);
-            border-radius: 15px;
-            border: 1px solid var(--border-color);
+            background: rgba(8, 14, 36, 0.95);
+            border-radius: 16px;
+            border: 1px solid rgba(31, 41, 55, 0.9);
             overflow: hidden;
-            transition: all 0.3s ease;
             position: relative;
             display: flex;
             flex-direction: column;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
         }
-
         .item-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-3px);
             border-color: var(--accent-color);
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.9);
         }
-
         .image-wrapper {
             width: 100%;
-            height: 200px;
-            background: #1a1a2e;
+            height: 190px;
+            background: radial-gradient(circle at top, #111827 0, #020617 60%);
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
         }
-
         .item-image {
             max-width: 80%;
             max-height: 80%;
             object-fit: contain;
         }
-
         .tier-badge {
             position: absolute;
             top: 10px;
             right: 10px;
             padding: 4px 10px;
-            border-radius: 4px;
+            border-radius: 999px;
             font-size: 0.7rem;
             font-weight: 800;
-            background: rgba(0,0,0,0.8);
+            text-transform: uppercase;
+            background: rgba(15, 23, 42, 0.95);
         }
-
-        .item-content { padding: 20px; text-align: center; flex-grow: 1; }
-        .price-display { display: block; font-size: 1.4rem; font-weight: 800; color: #2ecc71; margin-bottom: 15px; }
-
+        .item-content {
+            padding: 16px;
+            text-align: left;
+            flex-grow: 1;
+        }
+        .item-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+        .item-seller {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        .price-display {
+            display: block;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: #4ade80;
+            margin-bottom: 10px;
+        }
         .buy-button {
             width: 100%;
             background: var(--accent-color);
             color: white;
             border: none;
-            padding: 12px;
+            padding: 10px;
             border-radius: 8px;
-            font-weight: 800;
+            font-weight: 700;
             cursor: pointer;
+            font-size: 0.9rem;
         }
-
-        /* SOLD OVERLAY */
         .sold-stamp {
             position: absolute;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%) rotate(-15deg);
-            background: #ff4757;
+            transform: translate(-50%, -50%) rotate(-12deg);
+            background: #ef4444;
             color: white;
-            padding: 10px 20px;
+            padding: 8px 18px;
             font-weight: 900;
-            border: 4px solid white;
+            border: 3px solid white;
             z-index: 10;
             display: none;
+            font-size: 0.85rem;
         }
-
-        /* TIER COLORS */
-        .tier-Common { border-top: 4px solid var(--common); }
-        .tier-Uncommon { border-top: 4px solid var(--uncommon); }
-        .tier-Rare { border-top: 4px solid var(--rare); }
-        .tier-Epic { border-top: 4px solid var(--epic); }
-        .tier-Legendary { border-top: 4px solid var(--legendary); }
-        .tier-Mythic { border-top: 4px solid var(--mythic); animation: pulse 2s infinite; }
-
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+        .tier-Common { border-top: 3px solid var(--common); }
+        .tier-Uncommon { border-top: 3px solid var(--uncommon); }
+        .tier-Rare { border-top: 3px solid var(--rare); }
+        .tier-Epic { border-top: 3px solid var(--epic); }
+        .tier-Legendary { border-top: 3px solid var(--legendary); }
+        .tier-Mythic { border-top: 3px solid var(--mythic); box-shadow: 0 0 35px rgba(251, 113, 133, 0.45); }
+        .empty-state {
+            text-align: center;
+            padding: 80px 16px;
+            color: var(--text-muted);
+        }
+        .market-banner {
+            margin-bottom: 18px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-size: 0.9rem;
         }
     </style>
-</head>
-<body>
+{% endblock %}
 
-    <nav>
-        <div style="display: flex; gap: 30px; align-items: center;">
-            <a href="/market" class="logo">Polyville</a>
-            <a href="/exchange" style="color: white; text-decoration: none; font-weight: 600;">Exchange 📈</a>
-            <a href="/town" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Town Hall</a>
-            <a href="/market" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Market</a>
-            <a href="/lootbox" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Lootboxes</a>
-            <a href="/inventory" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Inventory</a>
-            <a href="/leaderboard" style="color: var(--text-muted); text-decoration: none; font-weight: 600;">Leaderboard</a>
-            
+{% block content %}
+    <div class="page-header">
+        <div>
+            <div class="page-title">Global Marketplace</div>
+            <div class="page-subtitle">Real-time player trading across the neon streets of Polyville.</div>
         </div>
-        <div class="user-status">
-            {% if session.get('user_id') %}
-                <a href="/profile/{{ session['user_id'] }}" class="user-info">
-                    <span>👤 <strong>{{ session['username'] }}</strong></span>
-                    <span id="gold-counter" style="color: #f1c40f; font-weight: bold;">💰 Loading...</span>
-                </a>
-                <a href="/logout" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem;">Logout</a>
-            {% else %}
-                <a href="/login" class="login-btn">Login with Discord</a>
-            {% endif %}
-        </div>
-    </nav>
+        <div class="pill">🛒 Market</div>
+    </div>
 
-    <div class="container">
-        <header>
-            <h1>Global Marketplace</h1>
-            <p style="color: var(--text-muted)">Real-time player trading across the world</p>
-        </header>
+    <div class="content-card">
+        {% if message %}
+            <div class="market-banner" style="background: {% if success %}rgba(34,197,94,0.16){% else %}rgba(248,113,113,0.16){% endif %}; border: 1px solid {% if success %}#22c55e{% else %}#f87171{% endif %}; color: white;">
+                {{ message }}
+            </div>
+        {% endif %}
 
         {% if not items %}
-            <div style="text-align: center; padding: 100px; color: var(--text-muted);">
-                <h2>📦 The market is empty.</h2>
+            <div class="empty-state">
+                <h2>📦 The market is quiet.</h2>
+                <p>List something from your inventory to get the night economy moving.</p>
             </div>
         {% else %}
             <div class="market-grid">
@@ -243,8 +148,8 @@
                     </div>
 
                     <div class="item-content">
-                        <h3 style="margin:0;">{{ item['item_name'] }}</h3>
-                        <p style="font-size: 0.8rem; color: var(--text-muted);">Seller: {{ item['user_id'] }}</p>
+                        <div class="item-title">{{ item['item_name'] }}</div>
+                        <div class="item-seller">Seller: {{ item['user_id'] }}</div>
                         <span class="price-display">${{ "{:,.2f}".format(item['list_price']) }}</span>
                         
                         <form action="/buy/{{ item['item_id'] }}" method="POST">
@@ -260,26 +165,26 @@
             </div>
         {% endif %}
     </div>
+{% endblock %}
 
+{% block extra_scripts %}
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script>
         const socket = io();
 
-        // 1. Real-time Gold Updates (No more polling!)
         socket.on('gold_update', function(data) {
             const goldDisplay = document.getElementById('gold-counter');
             if (goldDisplay && data.user_id == "{{ session.get('user_id') }}") {
-                goldDisplay.innerText = '💰 $' + data.new_balance.toLocaleString('en-US', {minimumFractionDigits: 2});
-                goldDisplay.style.color = '#2ecc71';
-                setTimeout(() => { goldDisplay.style.color = '#f1c40f'; }, 1000);
+                goldDisplay.textContent = '💰 $' + data.new_balance.toLocaleString('en-US', {minimumFractionDigits: 2});
+                goldDisplay.style.color = '#4ade80';
+                setTimeout(() => { goldDisplay.style.color = 'var(--legendary)'; }, 900);
             }
         });
 
-        // 2. Real-time Sales (Gray out items for everyone)
         socket.on('item_sold', function(data) {
             const card = document.getElementById(`item-${data.item_id}`);
             if (card) {
-                card.style.opacity = '0.4';
+                card.style.opacity = '0.35';
                 card.style.filter = 'grayscale(1)';
                 card.style.pointerEvents = 'none';
                 const stamp = card.querySelector('.sold-stamp');
@@ -290,21 +195,9 @@
             }
         });
 
-        // 3. Rare Pull Notifications
         socket.on('big_pull', function(data) {
             console.log(`🔥 Global: ${data.username} pulled a ${data.tier} ${data.item}!`);
-            // You could add a toast notification here later
         });
-
-        // Helper: Fetch gold once on page load
-        async function loadGold() {
-            const r = await fetch('/api/gold');
-            const d = await r.json();
-            if (d.success) {
-                document.getElementById('gold-counter').innerText = '💰 $' + d.gold.toLocaleString('en-US', {minimumFractionDigits: 2});
-            }
-        }
-        loadGold();
     </script>
-</body>
-</html>
+{% endblock %}
+

@@ -157,7 +157,7 @@ def profile(identifier):
     equipped_list = [dict(row) for row in equipped] if equipped else []
     
     # Render the page with the found player data and equipped gear
-    return render_template('profile.html', player=player, equipped_gear=equipped_list)
+    return render_template('profile.html', player=player, equipped_gear=equipped_list, active_page="profile")
 
 # --- MARKET ROUTES ---
 
@@ -166,14 +166,17 @@ def market():
     # 1. Check if the user is logged in
     if 'user_id' not in session:
         # We pass a message so the user knows why they were redirected
-        return render_template('market.html', 
-                               items=[], 
-                               message="Please login with Discord to view the Marketplace.", 
-                               success=False)
+        return render_template(
+            'market.html',
+            items=[],
+            message="Please login with Discord to view the Marketplace.",
+            success=False,
+            active_page="market",
+        )
 
     # 2. If they are logged in, proceed as normal
     items = run_async(get_market_listings())
-    return render_template('market.html', items=items)
+    return render_template('market.html', items=items, active_page="market")
 
 @app.route('/buy/<int:item_id>', methods=['POST'])
 def buy_item(item_id):
@@ -184,7 +187,7 @@ def buy_item(item_id):
         # Notify browsers to remove the item from their lists without refreshing
         broadcast_update('item_sold', {'item_id': item_id, 'buyer': session['username']})
         
-    return render_template('market.html', items=run_async(get_market_listings()), message=message, success=success)
+    return render_template('market.html', items=run_async(get_market_listings()), message=message, success=success, active_page="market")
 
 # --- INVENTORY ROUTES ---
 
@@ -192,7 +195,7 @@ def buy_item(item_id):
 def inventory():
     if 'user_id' not in session: return redirect(url_for('login'))
     raw_items = run_async(db.get_inventory(session['user_id']))
-    return render_template('inventory.html', items=[dict(row) for row in raw_items])
+    return render_template('inventory.html', items=[dict(row) for row in raw_items], active_page="inventory")
 
 @app.route('/api/sell_item', methods=['POST'])
 def api_sell_item():
@@ -327,7 +330,7 @@ def api_open_box():
 def town_hall():
     town = run_async(db.get_town_state())
     if not town: town = {'level': 1, 'treasury': 0.0, 'food': 0, 'tax_rate': 0.05, 'famine': 0, 'user_count': 1}
-    return render_template('town.html', town=town)
+    return render_template('town.html', town=town, active_page="town")
 
 @app.route('/api/donate', methods=['POST'])
 def api_donate():
@@ -395,7 +398,7 @@ def exchange():
             'outcomes': outcomes_data
         })
         
-    return render_template('exchange.html', markets=markets_data)
+    return render_template('exchange.html', markets=markets_data, active_page="exchange")
 
 @app.route('/api/buy_shares', methods=['POST'])
 def api_buy_shares():
@@ -456,10 +459,11 @@ def leaderboard():
 
     richest, strongest, collectors = run_async(get_leaders())
     
-    return render_template('leaderboard.html', 
-                           richest=richest, 
-                           strongest=strongest, 
-                           collectors=collectors)
+    return render_template('leaderboard.html',
+                           richest=richest,
+                           strongest=strongest,
+                           collectors=collectors,
+                           active_page="leaderboard")
 # --- START THE ENGINE ---
 
 if __name__ == '__main__':
