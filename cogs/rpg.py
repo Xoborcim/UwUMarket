@@ -51,7 +51,22 @@ ENEMIES = [
     {"name": "Stone Golem", "hp": 85, "atk": 6, "def": 12, "emoji": "🪨", "weakness": "poison"},
     {"name": "Fire Elemental", "hp": 35, "atk": 14, "def": 2, "emoji": "🔥", "effect": "burn", "chance": 0.3, "weakness": "frostbite"},
     {"name": "Venomous Spider", "hp": 25, "atk": 12, "def": 1, "emoji": "🕷️", "effect": "poison", "chance": 0.4},
-    {"name": "Cult Sorcerer", "hp": 35, "atk": 15, "def": 2, "emoji": "🦹", "effect": "burn", "chance": 0.2}
+    {"name": "Cult Sorcerer", "hp": 35, "atk": 15, "def": 2, "emoji": "🦹", "effect": "burn", "chance": 0.2},
+
+    # Ruined Crypt themed enemies
+    {"name": "Zombie", "hp": 55, "atk": 9, "def": 3, "emoji": "🧟", "effect": "poison", "chance": 0.25},
+    {"name": "Bone Archer", "hp": 35, "atk": 14, "def": 2, "emoji": "🏹"},
+    {"name": "Crypt Hound", "hp": 45, "atk": 13, "def": 1, "emoji": "🐺"},
+
+    # Frost Caverns themed enemies
+    {"name": "Frost Wolf", "hp": 40, "atk": 13, "def": 2, "emoji": "🐺", "effect": "freeze", "chance": 0.15, "weakness": "hellfire"},
+    {"name": "Ice Golem", "hp": 75, "atk": 9, "def": 10, "emoji": "🧊", "weakness": "hellfire"},
+    {"name": "Snow Spirit", "hp": 30, "atk": 11, "def": 3, "emoji": "🌨️", "effect": "freeze", "chance": 0.2},
+
+    # Infernal Depths themed enemies
+    {"name": "Lava Imp", "hp": 28, "atk": 14, "def": 1, "emoji": "👹", "effect": "burn", "chance": 0.35, "weakness": "frostbite"},
+    {"name": "Ash Revenant", "hp": 50, "atk": 17, "def": 0, "emoji": "🕯️", "effect": "burn", "chance": 0.25},
+    {"name": "Magma Brute", "hp": 80, "atk": 15, "def": 6, "emoji": "🪨", "weakness": "frostbite"}
 ]
 
 BOSSES = [
@@ -59,26 +74,56 @@ BOSSES = [
     {"name": "Lich King", "hp": 120, "atk": 15, "def": -5, "emoji": "🧙‍♂️", "effect": "freeze", "chance": 0.25, "weakness": "hellfire"},
     {"name": "Jad", "hp": 500, "atk": 8, "def": -10, "emoji": "🐴", "effect": "freeze", "chance": 0.25},
     {"name": "Colossal Minotaur", "hp": 220, "atk": 18, "def": 5, "emoji": "🐂"},
-    {"name": "Archdemon", "hp": 140, "atk": 16, "def": 5, "emoji": "👿", "effect": "burn", "chance": 0.25, "weakness": "frostbite"}
+    {"name": "Archdemon", "hp": 140, "atk": 16, "def": 5, "emoji": "👿", "effect": "burn", "chance": 0.25, "weakness": "frostbite"},
+
+    # Ruined Crypt boss
+    {"name": "Crypt Lich", "hp": 160, "atk": 17, "def": 2, "emoji": "💀", "effect": "poison", "chance": 0.3, "weakness": "hellfire"},
+
+    # Frost Caverns boss
+    {"name": "Frost Titan", "hp": 200, "atk": 18, "def": 10, "emoji": "🧊", "effect": "freeze", "chance": 0.25, "weakness": "hellfire"},
+
+    # Infernal Depths boss
+    {"name": "Hellforged Behemoth", "hp": 210, "atk": 20, "def": 4, "emoji": "🐉", "effect": "burn", "chance": 0.35, "weakness": "frostbite"}
 ]
 
 # --- DUNGEON THEMES (for future gimmicks + enemy pools) ---
 DUNGEON_THEMES = {
     "Ruined Crypt": {
-        "enemies": {"Skeleton", "Goblin", "Cult Sorcerer"},
-        "bosses": {"Lich King"},
+        "enemies": {
+            "Skeleton",
+            "Goblin",
+            "Cult Sorcerer",
+            "Zombie",
+            "Bone Archer",
+            "Crypt Hound"
+        },
+        "bosses": {"Lich King", "Crypt Lich"},
         "gimmick": "Undead halls and dark magic.",
         "emoji": "🪦",
     },
     "Frost Caverns": {
-        "enemies": {"Ice Wraith", "Skeleton", "Acid Slime"},
-        "bosses": {"Elder Dragon", "Lich King"},
+        "enemies": {
+            "Ice Wraith",
+            "Skeleton",
+            "Acid Slime",
+            "Frost Wolf",
+            "Ice Golem",
+            "Snow Spirit"
+        },
+        "bosses": {"Elder Dragon", "Lich King", "Frost Titan"},
         "gimmick": "Icy tunnels where frost reigns.",
         "emoji": "🧊",
     },
     "Infernal Depths": {
-        "enemies": {"Fire Elemental", "Orc Berserker", "Cult Sorcerer"},
-        "bosses": {"Archdemon", "Elder Dragon"},
+        "enemies": {
+            "Fire Elemental",
+            "Orc Berserker",
+            "Cult Sorcerer",
+            "Lava Imp",
+            "Ash Revenant",
+            "Magma Brute"
+        },
+        "bosses": {"Archdemon", "Elder Dragon", "Hellforged Behemoth"},
         "gimmick": "Scorching chambers and raging flames.",
         "emoji": "🌋",
     },
@@ -1047,8 +1092,9 @@ class RPGSession(discord.ui.View):
                         self.log += "❄️ IT'S SUPER EFFECTIVE!\n"
                     self.enemy['hp'] -= dmg
                     self.enemy_status = 'freeze'
-                    self.status_duration = 1 + (p['intelligence'] // 4)
-                    self.log += f"❄️ {p['user'].display_name} casts Frostbite for {dmg} DMG and froze the enemy for {self.status_duration} turn(s)!\n"
+                    # Freeze is now always 1 turn to avoid multi-turn lockdowns.
+                    self.status_duration = 1
+                    self.log += f"❄️ {p['user'].display_name} casts Frostbite for {dmg} DMG and froze the enemy for 1 turn!\n"
 
         if self.enemy['hp'] <= 0:
             return await self._process_enemy_death(interaction)
