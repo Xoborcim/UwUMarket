@@ -351,6 +351,7 @@ class RPGSession(discord.ui.View):
         self.message = None 
         self.party = {}
         self.theme = random.choice(list(DUNGEON_THEMES.keys())) if DUNGEON_THEMES else "Default"
+        self.corruption = 0  # Tracks risky bargains/events taken this run
         
         for user in party_members:
             gear_data, class_name, equipped_items = profiles[user.id]
@@ -461,11 +462,13 @@ class RPGSession(discord.ui.View):
         self.paths.append({"type": "combat", "label": f"Fight {enemy1['name']}", "emoji": "⚔️", "data": enemy1})
         
         roll = random.random()
-        if roll < 0.35: 
+        if roll < 0.30: 
             self.paths.append({"type": "treasure", "label": "Mysterious Door", "emoji": "🚪"})
-        elif roll < 0.50: 
+        elif roll < 0.45: 
             self.paths.append({"type": "shrine", "label": "Angel Shrine", "emoji": "👼"})
-        elif roll < 0.70: 
+        elif roll < 0.60:
+            self.paths.append({"type": "bargain", "label": "Demon Shrine", "emoji": "😈"})
+        elif roll < 0.80: 
             self.paths.append({"type": "event", "label": "Strange Altar", "emoji": "🔮"})
         else: 
             base2 = random.choice(themed_enemies)
@@ -553,7 +556,17 @@ class RPGSession(discord.ui.View):
             self.add_item(btn_drink)
             self.add_item(btn_leave)
 
-        if self.state in ["EXPLORE", "COMBAT", "SHRINE", "EVENT"]:
+        elif self.state == "BARGAIN":
+            btn_accept = discord.ui.Button(label="Accept Demonic Bargain", style=discord.ButtonStyle.danger, emoji="😈", custom_id=f"bargain_{self.session_id}", row=0)
+            btn_accept.callback = self.action_bargain_accept
+
+            btn_leave = discord.ui.Button(label="Walk Away", style=discord.ButtonStyle.secondary, emoji="🚶", custom_id=f"leave_{self.session_id}", row=1)
+            btn_leave.callback = self.action_leave_room
+
+            self.add_item(btn_accept)
+            self.add_item(btn_leave)
+
+        if self.state in ["EXPLORE", "COMBAT", "SHRINE", "EVENT", "BARGAIN"]:
             btn_inv = discord.ui.Button(label="Inventory", style=discord.ButtonStyle.secondary, emoji="🎒", custom_id=f"inv_{self.session_id}", row=2)
             btn_inv.callback = self.action_inventory
             self.add_item(btn_inv)
@@ -676,6 +689,10 @@ class RPGSession(discord.ui.View):
             elif path['type'] == 'event':
                 self.state = "EVENT"
                 self.log = "🔮 A mysterious hooded figure offers you a bubbling crimson potion... Do you drink it?"
+
+            elif path['type'] == 'bargain':
+                self.state = "BARGAIN"
+                self.log = "😈 You discover a Demonic Shrine. A whisper promises immense power in exchange for blood..."
                 
             self.combat_moves.clear()
             await self.update_message(interaction)
@@ -787,6 +804,48 @@ class RPGSession(discord.ui.View):
                         
                 self.log = f"🤢 The potion was a volatile curse! {interaction.user.display_name} permanently loses -{magnitude} {stat_name} {emoji}..."
                 
+            self.state = "EXPLORE"
+            self.floor += 1
+            self.generate_paths()
+            await self.update_message(interaction)
+
+    async def action_bargain_accept(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        async with self.lock:
+            if self.state != "BARGAIN":
+                return await self.update_message(interaction)
+
+            alive = self.get_alive_players()
+            if not alive:
+                self.log = "😈 The shrine finds no living souls to bargain with."
+            else:
+                # Cost: percentage of current HP, scaling with floor
+                hp_percent = 0.20 + min(0.20, self.floor * 0.01)  # 20% base + up to +20% by floor
+
+                # Reward: stats scale with floor and party size
+                floor_scale = 1 + (self.floor * 0.10)
+                party_scale = max(1.0, len(alive) * 0.5)
+                atk_gain = int(4 * floor_scale * party_scale)
+                def_gain = int(4 * floor_scale * party_scale)
+                int_gain = int(2 * floor_scale)
+
+                for uid in alive:
+                    p = self.party[uid]
+                    hp_loss = max(1, int(p['max_hp'] * hp_percent))
+                    p['hp'] = max(1, p['hp'] - hp_loss)
+                    p['atk'] += atk_gain
+                    p['def'] += def_gain
+                    p['intelligence'] += int_gain
+
+                self.corruption += 10
+
+                self.log = (
+                    f"😈 {interaction.user.display_name} accepts the Demonic Bargain! "
+                    f"Each living party member bleeds {int(hp_percent*100)}% of their max HP, "
+                    f"but gains +{atk_gain} ATK, +{def_gain} DEF and +{int_gain} INT for the rest of the run.\n"
+                    f"(Corruption rises to {self.corruption}.)"
+                )
+
             self.state = "EXPLORE"
             self.floor += 1
             self.generate_paths()
@@ -1019,6 +1078,9 @@ class RPGSession(discord.ui.View):
             self.log += f"🕷️ Venom ticks for {self.poison_dmg} DMG!\n"
             if self.status_duration <= 0: self.enemy_status = None
 
+        # Small chance for environment effects based on theme
+        self._apply_environment_hazard(alive_players)
+
         for uid in alive_players:
             p = self.party[uid]
             move = self.combat_moves.get(uid, "defend")
@@ -1110,6 +1172,32 @@ class RPGSession(discord.ui.View):
             
         self.combat_moves.clear()
         await self.update_message(interaction)
+
+    def _apply_environment_hazard(self, alive_players):
+        """Theme-based hazards that occasionally trigger during combat."""
+        if self.state != "COMBAT" or not self.enemy or not alive_players:
+            return
+
+        roll = random.random()
+        # Ruined Crypt: falling debris hits a random player for % max HP
+        if self.theme == "Ruined Crypt" and roll < 0.10:
+            target_id = random.choice(alive_players)
+            p = self.party[target_id]
+            dmg = max(1, int(p['max_hp'] * 0.07))
+            p['hp'] -= dmg
+            self.log += f"🪦 The ceiling crumbles! {p['user'].display_name} is hit by falling debris for {dmg} damage.\n"
+        # Frost Caverns: biting cold chips away at enemy HP
+        elif self.theme == "Frost Caverns" and roll < 0.10:
+            chill = max(1, int(self.enemy['max_hp'] * 0.04))
+            self.enemy['hp'] = max(1, self.enemy['hp'] - chill)
+            self.log += f"🧊 Freezing winds bite into the {self.enemy['name']}, dealing {chill} frost damage.\n"
+        # Infernal Depths: lava splashes scorch the party
+        elif self.theme == "Infernal Depths" and roll < 0.10:
+            for uid in alive_players:
+                p = self.party[uid]
+                dmg = max(1, int(p['max_hp'] * 0.05))
+                p['hp'] -= dmg
+            self.log += "🌋 Lava surges across the battlefield, scorching the entire party!\n"
 
 # --- RPG SHOP UI ---
 class RPGShopDropdown(discord.ui.Select):
