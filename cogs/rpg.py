@@ -1401,36 +1401,79 @@ class RPG(commands.GroupCog, group_name="rpg", group_description="Co-op Endless 
 
     @app_commands.command(name="profile", description="View your RPG Class, Stats, and Equipped Gear.")
     async def profile(self, interaction: discord.Interaction):
+        # Base profile (class + permanent shop gear string)
         gear_data, class_name = await db.get_rpg_profile(interaction.user.id)
-        gear_names = gear_data.split(',') if gear_data else ["Rusty Dagger"]
+        gear_names = gear_data.split(",") if gear_data else ["Rusty Dagger"]
         cls = CLASSES.get(class_name, CLASSES["Fighter"])
-        
-        total_gear_atk, total_gear_def, total_gear_int = 0, 0, 0
+
+        # Sum permanent shop gear bonuses
+        total_gear_atk = 0
+        total_gear_def = 0
+        total_gear_int = 0
         gear_display = []
-        
         for g in gear_names:
             g = g.strip()
+            if not g:
+                continue
             g_item = SHOP_GEAR.get(g, SHOP_GEAR["Rusty Dagger"])
-            total_gear_atk += g_item['atk']
-            total_gear_def += g_item['def']
-            total_gear_int += g_item['int']
+            total_gear_atk += g_item["atk"]
+            total_gear_def += g_item["def"]
+            total_gear_int += g_item["int"]
             gear_display.append(f"{g_item['emoji']} {g}")
-        
-        total_hp = cls['hp']
-        total_atk = total_gear_atk + cls['atk_mod']
-        total_def = 5 + total_gear_def + cls['def_mod']
-        total_int = total_gear_int + cls['spell_mod']
-        
-        embed = discord.Embed(title=f"🛡️ {interaction.user.display_name}'s RPG Profile", color=0x3498db)
-        embed.add_field(
-            name="Class", 
-            value=f"**{cls['emoji']} {class_name}**\n*Passive: {cls['passive'].title().replace('_', ' ') if cls['passive'] else 'None'}*\n*Starter Spell: {cls['spell'].title().replace('_', ' ') if cls['spell'] else 'None'}*", inline=True
+
+        # Add bonuses from currently equipped RPG gear in inventory
+        equipped_items = await db.get_equipped_gear(interaction.user.id)
+        for it in equipped_items or []:
+            it_dict = dict(it)
+            total_gear_atk += int(it_dict.get("atk_bonus") or 0)
+            total_gear_def += int(it_dict.get("def_bonus") or 0)
+            total_gear_int += int(it_dict.get("int_bonus") or 0)
+
+        total_hp = cls["hp"]
+        total_atk = total_gear_atk + cls["atk_mod"]
+        total_def = 5 + total_gear_def + cls["def_mod"]
+        total_int = total_gear_int + cls["spell_mod"]
+
+        embed = discord.Embed(
+            title=f"🛡️ {interaction.user.display_name}'s RPG Profile",
+            color=0x3498db,
         )
-        
+        embed.add_field(
+            name="Class",
+            value=(
+                f"**{cls['emoji']} {class_name}**\n"
+                f"*Passive: {cls['passive'].title().replace('_', ' ') if cls['passive'] else 'None'}*\n"
+                f"*Starter Spell: {cls['spell'].title().replace('_', ' ') if cls['spell'] else 'None'}*"
+            ),
+            inline=True,
+        )
+
         gear_str = "\n".join(gear_display) if gear_display else "None"
-        embed.add_field(name="Stacked Armory", value=gear_str, inline=True)
-        
-        embed.add_field(name="Starting Dungeon Stats", value=f"**❤️ HP:** {total_hp}\n**⚔️ ATK:** {total_atk}\n**🛡️ DEF:** {total_def}\n**🧠 INT:** {total_int}", inline=False)
+        embed.add_field(name="Stacked Shop Gear", value=gear_str, inline=True)
+
+        # Also list currently equipped lootbox/crafted gear by name
+        if equipped_items:
+            inv_lines = []
+            for it in equipped_items:
+                it_d = dict(it)
+                slot = (it_d.get("slot") or "?").title()
+                inv_lines.append(f"• **{slot}** — {it_d.get('item_name', 'Unknown')}")
+            embed.add_field(
+                name="Equipped RPG Gear",
+                value="\n".join(inv_lines),
+                inline=False,
+            )
+
+        embed.add_field(
+            name="Starting Dungeon Stats",
+            value=(
+                f"**❤️ HP:** {total_hp}\n"
+                f"**⚔️ ATK:** {total_atk}\n"
+                f"**🛡️ DEF:** {total_def}\n"
+                f"**🧠 INT:** {total_int}"
+            ),
+            inline=False,
+        )
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="play", description="Open a lobby for the Endless Dungeon.")
