@@ -219,6 +219,19 @@ def market():
 
     # 2. If they are logged in, proceed as normal
     items = run_async(get_market_listings())
+    items = [dict(row) for row in items]
+
+    # Attach severed head avatar URLs for listed trophies
+    for it in items:
+        if (
+            it.get("set_name") == "Trophy"
+            and "Severed Head" in str(it.get("item_name") or "")
+            and it.get("head_owner_id")
+        ):
+            avatar_hash = run_async(db.get_user_avatar_hash(it["head_owner_id"]))
+            if avatar_hash:
+                it["head_avatar_url"] = f"https://cdn.discordapp.com/avatars/{it['head_owner_id']}/{avatar_hash}.png?size=256"
+
     return render_template('market.html', items=items, active_page="market")
 
 @app.route('/buy/<int:item_id>', methods=['POST'])
@@ -238,7 +251,20 @@ def buy_item(item_id):
 def inventory():
     if 'user_id' not in session: return redirect(url_for('login'))
     raw_items = run_async(db.get_inventory(session['user_id']))
-    return render_template('inventory.html', items=[dict(row) for row in raw_items], active_page="inventory")
+    items = [dict(row) for row in raw_items]
+
+    # Attach severed head avatar URLs where possible
+    for it in items:
+        if (
+            it.get("set_name") == "Trophy"
+            and "Severed Head" in str(it.get("item_name") or "")
+            and it.get("head_owner_id")
+        ):
+            avatar_hash = run_async(db.get_user_avatar_hash(it["head_owner_id"]))
+            if avatar_hash:
+                it["head_avatar_url"] = f"https://cdn.discordapp.com/avatars/{it['head_owner_id']}/{avatar_hash}.png?size=256"
+
+    return render_template('inventory.html', items=items, active_page="inventory")
 
 @app.route('/api/sell_item', methods=['POST'])
 def api_sell_item():

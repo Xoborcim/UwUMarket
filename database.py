@@ -88,6 +88,7 @@ async def initialize_db():
             ("inventory", "def_bonus", "INTEGER DEFAULT 0"),
             ("inventory", "int_bonus", "INTEGER DEFAULT 0"),
             ("inventory", "is_equipped", "INTEGER DEFAULT 0"),
+            ("inventory", "head_owner_id", "INTEGER"),
         ]
         
         for table, col, dtype in columns:
@@ -409,17 +410,37 @@ async def add_item(
     atk_bonus=0,
     def_bonus=0,
     int_bonus=0,
+    head_owner_id=None,
 ):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
             """
             INSERT INTO inventory
-            (user_id, item_name, tier, set_name, item_type, slot, atk_bonus, def_bonus, int_bonus)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (user_id, item_name, tier, set_name, item_type, slot, atk_bonus, def_bonus, int_bonus, head_owner_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (user_id, item_name, tier, set_name, item_type, slot, int(atk_bonus), int(def_bonus), int(int_bonus)),
+            (
+                user_id,
+                item_name,
+                tier,
+                set_name,
+                item_type,
+                slot,
+                int(atk_bonus),
+                int(def_bonus),
+                int(int_bonus),
+                head_owner_id,
+            ),
         )
         await db.commit()
+
+
+async def get_user_avatar_hash(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT avatar_hash FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row["avatar_hash"] if row and "avatar_hash" in row.keys() else None
 
 async def get_equipped_gear(user_id):
     async with aiosqlite.connect(DB_NAME) as db:
