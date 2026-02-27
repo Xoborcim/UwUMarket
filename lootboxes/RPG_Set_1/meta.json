@@ -1,18 +1,18 @@
 {
-  "Soldier's Shortsword":   { "item_type": "Gear", "slot": "weapon", "atk_bonus": 6,  "def_bonus": 0,  "int_bonus": 0 },
-  "Scout's Bow":            { "item_type": "Gear", "slot": "weapon", "atk_bonus": 5,  "def_bonus": 0,  "int_bonus": 1 },
+  "Soldiers Shortsword":   { "item_type": "Gear", "slot": "weapon", "atk_bonus": 6,  "def_bonus": 0,  "int_bonus": 0 },
+  "Scouts Bow":            { "item_type": "Gear", "slot": "weapon", "atk_bonus": 5,  "def_bonus": 0,  "int_bonus": 1 },
   "Padded Vest":            { "item_type": "Gear", "slot": "armor",  "atk_bonus": 0,  "def_bonus": 6,  "int_bonus": 0 },
   "Novice Charm":           { "item_type": "Gear", "slot": "mage",   "atk_bonus": 0,  "def_bonus": 0,  "int_bonus": 3 },
 
   "Steel Broadsword":       { "item_type": "Gear", "slot": "weapon", "atk_bonus": 11, "def_bonus": 0,  "int_bonus": 0 },
   "Battle Spear":           { "item_type": "Gear", "slot": "weapon", "atk_bonus": 10, "def_bonus": 1,  "int_bonus": 0 },
-  "Guard's Breastplate":    { "item_type": "Gear", "slot": "armor",  "atk_bonus": 0,  "def_bonus": 12, "int_bonus": 0 },
+  "Guards Breastplate":    { "item_type": "Gear", "slot": "armor",  "atk_bonus": 0,  "def_bonus": 12, "int_bonus": 0 },
   "Acolytes Relic":         { "item_type": "Gear", "slot": "mage",   "atk_bonus": 0,  "def_bonus": 0,  "int_bonus": 5 },
 
-  "Knight's Longsword":     { "item_type": "Gear", "slot": "weapon", "atk_bonus": 18, "def_bonus": 0,  "int_bonus": 0 },
+  "Knights Longsword":     { "item_type": "Gear", "slot": "weapon", "atk_bonus": 18, "def_bonus": 0,  "int_bonus": 0 },
   "Storm Pike":             { "item_type": "Gear", "slot": "weapon", "atk_bonus": 17, "def_bonus": 2,  "int_bonus": 0 },
   "Vanguard Armor":         { "item_type": "Gear", "slot": "armor",  "atk_bonus": 0,  "def_bonus": 18, "int_bonus": 0 },
-  "Seer's Talisman":        { "item_type": "Gear", "slot": "mage",   "atk_bonus": 0,  "def_bonus": 0,  "int_bonus": 8 },
+  "Seers Talisman":        { "item_type": "Gear", "slot": "mage",   "atk_bonus": 0,  "def_bonus": 0,  "int_bonus": 8 },
 
   "Crusader Greatblade":    { "item_type": "Gear", "slot": "weapon", "atk_bonus": 25, "def_bonus": 0,  "int_bonus": 0 },
   "Runic Waraxe":           { "item_type": "Gear", "slot": "weapon", "atk_bonus": 23, "def_bonus": 3,  "int_bonus": 0 },
