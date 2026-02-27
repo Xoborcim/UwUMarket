@@ -821,8 +821,11 @@ class RPGSession(discord.ui.View):
 
     async def _enemy_attack_phase(self):
         if self.enemy_status == 'freeze':
-            self.enemy_status = None 
+            if self.status_duration > 0:
+                self.status_duration -= 1
             self.log += f"❄️ {self.enemy['name']} is frozen and skips its turn!\n"
+            if self.status_duration <= 0:
+                self.enemy_status = None
             return
 
         if self.enemy['hp'] <= self.enemy['max_hp'] * 0.3 and not self.enemy.get('enraged') and self.enemy.get('boss'):
@@ -941,7 +944,8 @@ class RPGSession(discord.ui.View):
                 continue
             if p['status'] == 'freeze':
                 self.log += f"🥶 {p['user'].display_name} is frozen solid!\n"
-                p['status'] = None
+                if p['status_dur'] <= 0:
+                    p['status'] = None
                 continue
 
             if move == "attack":
