@@ -263,7 +263,15 @@ class GuillotineVoteView(discord.ui.View):
             seized = await db.execute_player(self.target.id, 0.50) # Added Await!
             
             head_name = f"{self.target.display_name}'s Severed Head"
-            await db.add_item(self.initiator.id, head_name, "Mythic", "Trophy") # Added Await!
+            # Store whose head this is so the website can show their avatar.
+            await db.add_item(
+                self.initiator.id,
+                head_name,
+                "Mythic",
+                "Trophy",
+                item_type="Collectible",
+                head_owner_id=self.target.id,
+            )
             
             embed = discord.Embed(
                 title="🩸 PUBLIC EXECUTION 🩸", 

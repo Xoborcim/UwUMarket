@@ -144,7 +144,11 @@
                     <div class="sold-stamp">SOLD</div>
                     <div class="image-wrapper">
                         <div class="tier-badge" style="color: var(--{{ item['tier']|lower }});">{{ item['tier'] }}</div>
-                        <img src="/images/{{ item['set_name'] }}/{{ item['tier'] }}/{{ item['item_name'] }}.png" class="item-image" alt="item">
+                        {% if item.get('head_avatar_url') %}
+                            <img src="{{ item.head_avatar_url }}" class="item-image" alt="item">
+                        {% else %}
+                            <img src="/images/{{ item['set_name'] }}/{{ item['tier'] }}/{{ item['item_name'] }}.png" class="item-image" alt="item">
+                        {% endif %}
                     </div>
 
                     <div class="item-content">
