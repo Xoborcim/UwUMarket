@@ -556,6 +556,37 @@ async def scrap_item(user_id, item_id, scrap_value):
         net, tax = await process_town_payout(user_id, scrap_value)
         return True, f"Scrapped **{item['item_name']}** for **${net:,.2f}** *(Tax: ${tax:,.2f})*!"
 
+async def scrap_duplicates(user_id, scrap_values):
+    """Scrap all duplicate items (same item_name, set_name, tier), keeping one per group. Prefers keeping equipped. Returns (count_scrapped, total_net, message)."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM inventory WHERE user_id = ? AND is_listed = 0 ORDER BY is_equipped DESC, item_id ASC",
+            (user_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    items = [dict(r) for r in rows]
+    key = lambda it: (str(it.get("item_name") or ""), str(it.get("set_name") or ""), str(it.get("tier") or ""))
+    seen = {}
+    to_scrap = []
+    for it in items:
+        k = key(it)
+        if k not in seen:
+            seen[k] = it["item_id"]
+            continue
+        to_scrap.append(it)
+    if not to_scrap:
+        return 0, 0.0, "No duplicate items to scrap."
+    total_net = 0.0
+    async with aiosqlite.connect(DB_NAME) as db:
+        for it in to_scrap:
+            scrap_val = scrap_values.get(it.get("tier"), 5.0)
+            await db.execute("DELETE FROM inventory WHERE item_id = ?", (it["item_id"],))
+            net, _ = await process_town_payout(user_id, scrap_val)
+            total_net += net
+        await db.commit()
+    return len(to_scrap), total_net, f"Scrapped {len(to_scrap)} duplicate(s) for ${total_net:,.2f} total."
+
 async def get_inventory(user_id):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
