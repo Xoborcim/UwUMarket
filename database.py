@@ -70,6 +70,7 @@ async def initialize_db():
         # Safe Column Migrations
         columns = [
             ("users", "username", "TEXT"),
+            ("users", "avatar_hash", "TEXT"),
             ("town", "board_channel_id", "INTEGER"),
             ("town", "board_message_id", "INTEGER"),
             ("town", "last_upkeep", "DATETIME"),
@@ -86,7 +87,7 @@ async def initialize_db():
             ("inventory", "atk_bonus", "INTEGER DEFAULT 0"),
             ("inventory", "def_bonus", "INTEGER DEFAULT 0"),
             ("inventory", "int_bonus", "INTEGER DEFAULT 0"),
-            ("inventory", "is_equipped", "INTEGER DEFAULT 0")
+            ("inventory", "is_equipped", "INTEGER DEFAULT 0"),
         ]
         
         for table, col, dtype in columns:
@@ -111,13 +112,18 @@ async def initialize_db():
         await db.commit()
 
 
-async def sync_user_data(user_id, username):
-    """Ensures the user exists and their username is up to date."""
+async def sync_user_data(user_id, username, avatar_hash=None):
+    """Ensures the user exists and their username/avatar are up to date."""
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("""
-            INSERT INTO users (user_id, username) VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET username = excluded.username
-        """, (user_id, username))
+        await db.execute(
+            """
+            INSERT INTO users (user_id, username, avatar_hash) VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username = excluded.username,
+                avatar_hash = excluded.avatar_hash
+            """,
+            (user_id, username, avatar_hash),
+        )
         await db.commit()
         
         
