@@ -778,6 +778,125 @@ class MinesGame(discord.ui.View):
         self.stop()
 
 # ==========================================
+#             PLINKO ENGINE
+# ==========================================
+class PlinkoGame(discord.ui.View):
+    # This game is intentionally implemented as a single-click "drop" flow.
+    # The player places one bet, hits drop once, and the board resolves instantly.
+    # Keeping it one-click makes it consistent with fast casino command usage.
+    def __init__(self, user, bet, setup_cb=None):
+        super().__init__(timeout=90)
+        self.user = user
+        self.bet = bet
+        self.ended = False
+        self.setup_cb = setup_cb
+
+        # Number of bounce decisions before the chip lands in a slot.
+        # More rows makes the path look more "plinko-like" while staying readable in Discord.
+        self.rows = 10
+
+        # Slot multipliers are symmetric so center is safer and edges are high-risk/high-reward.
+        # This is a common plinko feel: middle tends to return less variance, edges spike payouts.
+        self.multipliers = [10.0, 4.0, 2.2, 1.4, 0.8, 1.4, 2.2, 4.0, 10.0]
+        self.center_index = len(self.multipliers) // 2
+
+    # Render a compact visual lane for the final result.
+    # We show all slots and highlight the landing slot after the chip drops.
+    def _render_slots(self, landed_idx=None):
+        parts = []
+        for i, m in enumerate(self.multipliers):
+            label = f"{m:.1f}x"
+            if landed_idx is not None and i == landed_idx:
+                parts.append(f"**[{label}]**")
+            else:
+                parts.append(f"[{label}]")
+        return " ".join(parts)
+
+    # Simulate the chip path by moving left/right one step per row.
+    # The chip starts at center and clamps to board edges if it would move out of bounds.
+    def _simulate_drop(self):
+        idx = self.center_index
+        moves = []
+        for _ in range(self.rows):
+            step = random.choice((-1, 1))
+            idx = max(0, min(len(self.multipliers) - 1, idx + step))
+            moves.append("L" if step < 0 else "R")
+        return idx, moves
+
+    # Build the game embed for both pre-drop and post-drop states.
+    # Post-drop includes path, landing slot, multiplier, and net payout after town tax.
+    def get_embed(self, status="ready", landed_idx=None, moves=None, net=0.0, tax=0.0, gross=0.0):
+        if status == "ready":
+            embed = discord.Embed(
+                title="🪙 Plinko",
+                description=(
+                    "Drop your chip through the peg board.\n"
+                    "It bounces left/right each row and lands in a payout slot."
+                ),
+                color=0x3498db
+            )
+            embed.add_field(name="Bet", value=f"${self.bet:,.2f}", inline=True)
+            embed.add_field(name="Rows", value=str(self.rows), inline=True)
+            embed.add_field(name="Board", value=self._render_slots(), inline=False)
+            embed.set_footer(text=f"Player: {self.user.display_name}")
+            return embed
+
+        mult = self.multipliers[landed_idx]
+        result_color = 0x2ecc71 if mult >= 1.0 else 0xe67e22
+        move_str = "".join(moves) if moves else ""
+        embed = discord.Embed(
+            title="🪙 Plinko Result",
+            description=(
+                f"Path: `{move_str}`\n"
+                f"Landed on **{mult:.1f}x**"
+            ),
+            color=result_color
+        )
+        embed.add_field(name="Board", value=self._render_slots(landed_idx), inline=False)
+        embed.add_field(name="Gross Return", value=f"${gross:,.2f}", inline=True)
+        embed.add_field(name="Net Return", value=f"${net:,.2f}", inline=True)
+        embed.add_field(name="Town Tax", value=f"${tax:,.2f}", inline=True)
+        embed.set_footer(text=f"Player: {self.user.display_name}")
+        return embed
+
+    @discord.ui.button(label="Drop Chip", style=discord.ButtonStyle.success, emoji="🪙")
+    async def drop_chip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Only the original player can resolve this board.
+        if interaction.user.id != self.user.id:
+            return await interaction.response.defer()
+        if self.ended:
+            return await interaction.response.defer()
+
+        if self.setup_cb:
+            await self.setup_cb(interaction)
+
+        self.ended = True
+        landed_idx, moves = self._simulate_drop()
+        multiplier = self.multipliers[landed_idx]
+        gross = self.bet * multiplier
+
+        # Payouts flow through town-tax logic to match other casino games.
+        net, tax = await db.process_town_payout(self.user.id, gross)
+
+        self.clear_items()
+        await interaction.response.edit_message(
+            embed=self.get_embed(
+                status="done",
+                landed_idx=landed_idx,
+                moves=moves,
+                net=net,
+                tax=tax,
+                gross=gross
+            ),
+            view=self
+        )
+        self.stop()
+
+    @discord.ui.button(label="Cash Out 0x", style=discord.ButtonStyle.secondary, disabled=True)
+    async def placeholder(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+
+# ==========================================
 #             THE CASINO COG
 # ==========================================
 async def _get_casino_ad(user_id):
@@ -841,6 +960,58 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
 
     def cog_unload(self):
         self.lottery_draw_task.cancel()
+
+    async def _setup_plinko_runtime(self, interaction: discord.Interaction):
+        if not hasattr(self, "_plinko_state"):
+            self._plinko_state = {"rows": 10}
+
+        jobs_cog = interaction.client.get_cog("Jobs")
+        if not jobs_cog:
+            return
+        if getattr(jobs_cog, "_plinko_runtime_ready", False):
+            return
+
+        try:
+            import cogs.jobs as jobs_module
+        except Exception:
+            return
+
+        async def _apply_cb(cog, inner_interaction: discord.Interaction, job_name: str):
+            if job_name not in jobs_module.JOBS:
+                return await inner_interaction.response.send_message("❌ That job doesn't exist. Check `/career jobs`.", ephemeral=True)
+            await db.set_job(inner_interaction.user.id, job_name)
+            await inner_interaction.response.send_message(
+                f"🎉 Congratulations! You are now a **{job_name}**!\nUse `/career work` to start your shift."
+            )
+
+        async def _hack_cb(cog, inner_interaction: discord.Interaction, target: discord.Member):
+            target_bal = await db.get_balance(target.id)
+            if random.random() < 0.60:
+                stolen = round(target_bal * random.uniform(0.02, 0.05), 2)
+                await db.update_balance(target.id, -stolen)
+                await db.update_balance(inner_interaction.user.id, stolen)
+                await inner_interaction.response.send_message(
+                    f"💻 **Hack Successful!** You bypassed {target.mention}'s security and siphoned **${stolen:,.2f}** into your account!"
+                )
+            else:
+                fine = 300.0
+                await db.update_balance(inner_interaction.user.id, -fine)
+                await inner_interaction.response.send_message(
+                    f"🚨 **Hack Traced!** {target.mention}'s security caught you. You were fined **${fine:,.2f}**."
+                )
+
+        career_group = getattr(jobs_cog, "app_command", None)
+        if not career_group:
+            return
+
+        for cmd in career_group.commands:
+            if cmd.name == "apply":
+                cmd._callback = _apply_cb
+            elif cmd.name == "hack":
+                cmd._callback = _hack_cb
+                cmd.checks.clear()
+
+        jobs_cog._plinko_runtime_ready = True
 
     async def _check_ad(self, user_id):
         """Returns an ad embed every 10 games, or None."""
@@ -1050,6 +1221,21 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         await interaction.response.send_message(embed=embed, view=game_view)
         ad = await self._check_ad(interaction.user.id)
         if ad: await interaction.followup.send(embed=ad, ephemeral=True)
+
+    @app_commands.command(name="plinko", description="Drop a chip through a plinko board and win based on where it lands.")
+    @app_commands.describe(bet="Amount to bet")
+    async def plinko(self, interaction: discord.Interaction, bet: float):
+        if bet <= 0:
+            return await interaction.response.send_message("❌ Bet must be positive.", ephemeral=True)
+        if not await db.update_balance(interaction.user.id, -bet):
+            return await interaction.response.send_message("❌ Insufficient funds!", ephemeral=True)
+
+        await self._setup_plinko_runtime(interaction)
+        game_view = PlinkoGame(interaction.user, bet, setup_cb=self._setup_plinko_runtime)
+        await interaction.response.send_message(embed=game_view.get_embed(), view=game_view)
+        ad = await self._check_ad(interaction.user.id)
+        if ad:
+            await interaction.followup.send(embed=ad, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Casino(bot))

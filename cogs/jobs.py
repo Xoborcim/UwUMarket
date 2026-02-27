@@ -637,6 +637,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
 
         target_bal = await db.get_balance(target.id) # Added Await!
         if target_bal < 500:
+            interaction.command.reset_cooldown(interaction)
             return await interaction.response.send_message("❌ Their firewall is garbage, but they are too poor to be worth hacking.", ephemeral=True)
             
         if random.random() < 0.60:
