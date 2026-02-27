@@ -380,7 +380,15 @@ class Items(commands.Cog):
             slot_str = f" — *{slot}*" if slot else ""
             desc += f"`ID: {item['item_id']}` | **{item['item_name']}** ({item['tier']}){slot_str}{eq}\n"
         embed.description = desc
-        equippable = [i for i in items if dict(i).get("slot")]
+        # Treat any item with a slot OR with RPG stat bonuses as equippable.
+        equippable = []
+        for row in items:
+            data = dict(row)
+            has_slot = bool(data.get("slot"))
+            has_stats = bool(data.get("atk_bonus") or data.get("def_bonus") or data.get("int_bonus"))
+            is_rpg = str(data.get("set_name", "")).startswith("RPG_") or data.get("item_type") == "Gear"
+            if has_slot or has_stats or is_rpg:
+                equippable.append(row)
         view = EquipView(interaction.user.id, equippable) if equippable else None
         await interaction.response.send_message(embed=embed, ephemeral=True, view=view)
 
