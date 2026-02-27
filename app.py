@@ -367,6 +367,14 @@ def api_scrap_item():
     success, msg = run_async(db.scrap_item(user_id, item_id, SCRAP_VALUES.get(item['tier'], 5.0)))
     return {"success": success, "message": msg}
 
+
+@app.route('/api/scrap_duplicates', methods=['POST'])
+def api_scrap_duplicates():
+    if 'user_id' not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    count, total_net, msg = run_async(db.scrap_duplicates(session['user_id'], SCRAP_VALUES))
+    return {"success": True, "count": count, "total_net": total_net, "message": msg}
+
 # --- LOOTBOX ROUTES ---
 
 @app.route('/lootbox')

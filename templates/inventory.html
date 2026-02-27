@@ -152,6 +152,35 @@
             cursor: pointer;
             font-weight: bold;
         }
+        .inventory-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .inventory-toolbar label { color: var(--text-muted); font-weight: 600; }
+        .inventory-toolbar select {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: var(--card-bg);
+            color: var(--text-main);
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .scrap-duplicates-btn {
+            background: #b91c1c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .scrap-duplicates-btn:hover { background: #dc2626; }
+        .scrap-duplicates-btn:disabled { opacity: 0.6; cursor: not-allowed; }
     </style>
 {% endblock %}
 
@@ -172,15 +201,32 @@
     <div class="content-card">
         <div id="notification-banner" style="display: none; padding: 15px; margin-bottom: 20px; border-radius: 10px; text-align: center; font-weight: bold; color: white;"></div>
 
+        {% if items %}
+        <div class="inventory-toolbar">
+            <label for="sort-inventory">Sort by</label>
+            <select id="sort-inventory">
+                <option value="default">Default</option>
+                <option value="set">Set</option>
+                <option value="tier">Tier</option>
+                <option value="name">Name</option>
+            </select>
+            <button type="button" class="scrap-duplicates-btn" id="scrap-duplicates-btn">Scrap all duplicates</button>
+        </div>
+        {% endif %}
+
         {% if not items %}
             <div class="empty-state">
                 <h2>🎒 Your inventory is empty.</h2>
                 <p>Open lootboxes or earn drops from the RPG dungeon to start filling it.</p>
             </div>
         {% else %}
-            <div class="inventory-grid">
+            <div class="inventory-grid" id="inventory-grid">
                 {% for item in items %}
-                <div class="item-card tier-{{ item.get('tier', 'Common') }}" id="card-{{ item['item_id'] }}">
+                <div class="item-card tier-{{ item.get('tier', 'Common') }}" id="card-{{ item['item_id'] }}"
+                     data-item-id="{{ item['item_id'] }}"
+                     data-set="{{ item.get('set_name') or 'Base_Set' }}"
+                     data-tier="{{ item.get('tier', 'Common') }}"
+                     data-name="{{ item.get('item_name') or '' }}">
                     <div class="image-wrapper">
                         <div class="tier-badge text-{{ item.get('tier', 'Common') }}">{{ item.get('tier', 'Common') }}</div>
                         {% if item.get('head_avatar_url') %}
@@ -263,6 +309,56 @@
         }
         fetchLiveGold();
         setInterval(fetchLiveGold, 10000);
+
+        document.getElementById('sort-inventory')?.addEventListener('change', function() {
+            const grid = document.getElementById('inventory-grid');
+            if (!grid) return;
+            const cards = Array.from(grid.querySelectorAll('.item-card'));
+            const value = this.value;
+            const tierOrder = { 'Common': 0, 'Uncommon': 1, 'Rare': 2, 'Epic': 3, 'Legendary': 4, 'Mythic': 5 };
+            cards.sort((a, b) => {
+                if (value === 'default') {
+                    return (parseInt(a.dataset.itemId, 10) || 0) - (parseInt(b.dataset.itemId, 10) || 0);
+                }
+                if (value === 'set') {
+                    const sa = (a.dataset.set || '').toLowerCase();
+                    const sb = (b.dataset.set || '').toLowerCase();
+                    return sa.localeCompare(sb) || (a.dataset.name || '').localeCompare(b.dataset.name || '');
+                }
+                if (value === 'tier') {
+                    const ta = tierOrder[a.dataset.tier] ?? 0;
+                    const tb = tierOrder[b.dataset.tier] ?? 0;
+                    return ta - tb || (a.dataset.name || '').localeCompare(b.dataset.name || '');
+                }
+                if (value === 'name') {
+                    return (a.dataset.name || '').toLowerCase().localeCompare((b.dataset.name || '').toLowerCase());
+                }
+                return 0;
+            });
+            cards.forEach(c => grid.appendChild(c));
+        });
+
+        document.getElementById('scrap-duplicates-btn')?.addEventListener('click', async function() {
+            if (!confirm('Scrap all duplicate items? One copy of each unique item (set + tier + name) will be kept; the rest will be scrapped for gold.')) return;
+            const btn = this;
+            btn.disabled = true;
+            try {
+                const response = await fetch('/api/scrap_duplicates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+                const result = await response.json();
+                const banner = document.getElementById('notification-banner');
+                banner.innerText = result.message || (result.count ? `Scrapped ${result.count} duplicate(s) for $${(result.total_net || 0).toFixed(2)}.` : 'No duplicates to scrap.');
+                banner.style.display = 'block';
+                banner.style.backgroundColor = result.success ? '#22c55e' : '#ef4444';
+                if (result.success && result.count > 0) {
+                    fetchLiveGold();
+                    setTimeout(() => window.location.reload(), 1500);
+                }
+            } catch (e) {
+                alert('Server error.');
+            } finally {
+                btn.disabled = false;
+            }
+        });
 
         async function scrapItem(itemId) {
             if (!confirm("Scrap this item permanently for raw gold?")) {
