@@ -459,8 +459,15 @@ async def equip_inventory_item(user_id, item_id):
                             with open(meta_path, "r", encoding="utf-8") as f:
                                 raw_meta = json.load(f)
                             if isinstance(raw_meta, dict):
-                                meta = {str(k).lower(): v for k, v in raw_meta.items()}
-                                item_meta = meta.get(str(name).lower())
+                                # Normalize keys aggressively: lowercase and strip non-alphanumerics,
+                                # so older items with apostrophes still match updated meta.
+                                def _norm(s: str) -> str:
+                                    s = s.lower()
+                                    return "".join(ch for ch in s if ch.isalnum())
+
+                                meta = { _norm(str(k)): v for k, v in raw_meta.items() }
+                                key = _norm(str(name))
+                                item_meta = meta.get(key)
                                 if isinstance(item_meta, dict):
                                     atk_b = int(item_meta.get("atk_bonus", 0) or 0)
                                     def_b = int(item_meta.get("def_bonus", 0) or 0)
