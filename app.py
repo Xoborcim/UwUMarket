@@ -254,7 +254,7 @@ def api_open_box():
     if 'user_id' not in session: return {"success": False, "message": "Not logged in"}, 401
     user_id = session['user_id']
     set_name = (request.get_json() or {}).get('set_name', 'Base_Set')
-    cost = 500.0
+    cost = 10000.0
     
     valid_tiers = [tier for tier in TIER_WEIGHTS.keys() if os.path.exists(f"lootboxes/{set_name}/{tier}") and any(f.endswith('.png') for f in os.listdir(f"lootboxes/{set_name}/{tier}"))]
     if not valid_tiers: return {"success": False, "message": f"Set '{set_name}' is empty."}
