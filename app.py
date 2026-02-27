@@ -152,8 +152,12 @@ def profile(identifier):
         # Helpful error message to see what the server was looking for
         return f"<h1>404: Resident '{identifier}' not found in Polyville</h1>", 404
     
-    # Render the page with the found player data
-    return render_template('profile.html', player=player)
+    # Fetch equipped RPG gear for this player
+    equipped = run_async(db.get_equipped_gear(player['user_id']))
+    equipped_list = [dict(row) for row in equipped] if equipped else []
+    
+    # Render the page with the found player data and equipped gear
+    return render_template('profile.html', player=player, equipped_gear=equipped_list)
 
 # --- MARKET ROUTES ---
 

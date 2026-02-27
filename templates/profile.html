@@ -101,10 +101,25 @@
         </div>
 
         <div class="gear-box">
-            <h3 style="margin-top: 0; color: var(--accent-color);">🛡️ Active Armory Stats</h3>
-            <p style="color: var(--text-muted); line-height: 1.8;">
-                {{ (player['starter_weapon'] or 'Rusty Dagger') | replace(',', '<br>• ') | safe }}
-            </p>
+            <h3 style="margin-top: 0; color: var(--accent-color);">🛡️ Active Armory</h3>
+            {% if equipped_gear %}
+                <p style="color: var(--text-muted); line-height: 1.8; margin-bottom:8px;">
+                    Showing equipped RPG gear from lootboxes and crafted items.
+                </p>
+                <ul style="list-style:none; padding-left:0; margin:0; color:var(--text-muted); line-height:1.8;">
+                    {% for item in equipped_gear %}
+                        <li>
+                            <strong>{{ item.get('slot','?')|title }}:</strong>
+                            {{ item['item_name'] }}
+                            (ATK +{{ item.get('atk_bonus',0) }}, DEF +{{ item.get('def_bonus',0) }}, INT +{{ item.get('int_bonus',0) }})
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p style="color: var(--text-muted); line-height: 1.8;">
+                    No RPG gear equipped yet. Open lootboxes or craft items, then equip them from Discord or the web inventory.
+                </p>
+            {% endif %}
         </div>
     </div>
 
