@@ -92,7 +92,7 @@
 
     <div class="container">
         <h1>Purchase a Lootbox</h1>
-        <p style="color: var(--text-muted)">Costs $500.00 to roll for a random item.</p>
+        <p style="color: var(--text-muted)">Costs $10,000.00 to roll for a random item.</p>
 
         <select id="set-selector">
             {% for set_name in available_sets %}
@@ -106,7 +106,7 @@
         <div class="unboxing-stage">
             <div id="box-visual" class="box-icon">📦</div>
             
-            <button id="open-btn" class="open-btn" onclick="openLootbox()">Open Box ($500)</button>
+            <button id="open-btn" class="open-btn" onclick="openLootbox()">Open Box ($10,000)</button>
             <div id="error-msg"></div>
 
             <div id="reward-card" class="revealed-item">
@@ -155,7 +155,7 @@
                 if (!result.success) {
                     errorMsg.innerText = result.message;
                     btn.disabled = false;
-                    btn.innerText = "Open Box ($500)";
+                    btn.innerText = "Open Box ($10,000)";
                     return;
                 }
 
@@ -178,13 +178,13 @@
 
                     card.style.display = "block";
                     btn.disabled = false;
-                    btn.innerText = "Open Another ($500)";
+                    btn.innerText = "Open Another ($10,000)";
                 }, 500);
 
             } catch (error) {
                 errorMsg.innerText = "Server communication failed.";
                 btn.disabled = false;
-                btn.innerText = "Open Box ($500)";
+                btn.innerText = "Open Box ($10,000)";
             }
         }
     </script>
