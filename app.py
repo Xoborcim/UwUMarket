@@ -107,9 +107,12 @@ def serve_image(filename):
     if os.path.isdir(search_dir):
         full_exact = os.path.join(search_dir, fname)
         if not os.path.exists(full_exact):
-            lower_fname = fname.lower()
+            # Fallback: case- and punctuation-insensitive match
+            def _norm(s: str) -> str:
+                return re.sub(r"[^a-z0-9]", "", s.lower())
+            target_norm = _norm(fname)
             for entry in os.listdir(search_dir):
-                if entry.lower() == lower_fname:
+                if _norm(entry) == target_norm:
                     chosen_rel = os.path.join(rel_dir, entry) if rel_dir else entry
                     break
 
