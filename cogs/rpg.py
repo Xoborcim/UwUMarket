@@ -20,25 +20,33 @@ CLASSES = {
 }
 
 # --- SHOP GEAR ---
+# Tuned to be slightly weaker than comparable lootbox gear.
 SHOP_GEAR = {
-    "Rusty Dagger": {"cost": 0, "atk": 20, "def": 0, "int": 0, "emoji": "🗡️"},
-    "Wooden Club": {"cost": 500, "atk": 22, "def": 0, "int": 0, "emoji": "🏏"},
-    "Iron Longsword": {"cost": 2500, "atk": 25, "def": 0, "int": 0, "emoji": "⚔️"},
-    "Steel Halberd": {"cost": 10000, "atk": 30, "def": 0, "int": 0, "emoji": "🪓"},
-    "Mithril Rapier": {"cost": 20000, "atk": 32, "def": 0, "int": 0, "emoji": "🤺"},
-    "Obsidian Scythe": {"cost": 35000, "atk": 35, "def": 0, "int": 0, "emoji": "🌙"},
-    "Dragonbone Greatsword": {"cost": 100000, "atk": 55, "def": 0, "int": 0, "emoji": "🔥"},
-    "Void Reaper": {"cost": 250000, "atk": 85, "def": 0, "int": 0, "emoji": "🌌"},
-    "Celestial Spear": {"cost": 1000000, "atk": 120, "def": 0, "int": 0, "emoji": "☄️"},
-    "Leather Tunic": {"cost": 1500, "atk": 0, "def": 8, "int": 0, "emoji": "🦺"},
-    "Chainmail": {"cost": 8000, "atk": 0, "def": 18, "int": 0, "emoji": "⛓️"},
-    "Plate Armor": {"cost": 30000, "atk": 0, "def": 30, "int": 0, "emoji": "🛡️"},
-    "Aegis of the Gods": {"cost": 500000, "atk": 0, "def": 75, "int": 0, "emoji": "🌟"},
-    "Apprentice Wand": {"cost": 2000, "atk": 0, "def": 0, "int": 4, "emoji": "🪄"},
-    "Ruby Staff": {"cost": 15000, "atk": 0, "def": 0, "int": 8, "emoji": "🦯"},
-    "Archmage Grimoire": {"cost": 80000, "atk": 0, "def": 0, "int": 16, "emoji": "📖"},
-    "Staff of the Cosmos": {"cost": 800000, "atk": 0, "def": 0, "int": 35, "emoji": "🌌"},
-    "Jad's Ascended Horseshoe": {"cost": 5000000, "atk": 250, "def": 100, "int": 50, "emoji": "🐴"}
+    # Weapon line (ATK-focused)
+    "Rusty Dagger": {"cost": 0, "atk": 10, "def": 0, "int": 0, "emoji": "🗡️"},
+    "Wooden Club": {"cost": 500, "atk": 12, "def": 0, "int": 0, "emoji": "🏏"},
+    "Iron Longsword": {"cost": 2500, "atk": 16, "def": 0, "int": 0, "emoji": "⚔️"},
+    "Steel Halberd": {"cost": 10000, "atk": 20, "def": 0, "int": 0, "emoji": "🪓"},
+    "Mithril Rapier": {"cost": 20000, "atk": 23, "def": 0, "int": 0, "emoji": "🤺"},
+    "Obsidian Scythe": {"cost": 35000, "atk": 26, "def": 0, "int": 0, "emoji": "🌙"},
+    "Dragonbone Greatsword": {"cost": 100000, "atk": 30, "def": 0, "int": 0, "emoji": "🔥"},
+    "Void Reaper": {"cost": 250000, "atk": 34, "def": 0, "int": 0, "emoji": "🌌"},
+    "Celestial Spear": {"cost": 1000000, "atk": 38, "def": 0, "int": 0, "emoji": "☄️"},
+
+    # Armor line (DEF-focused)
+    "Leather Tunic": {"cost": 1500, "atk": 0, "def": 5, "int": 0, "emoji": "🦺"},
+    "Chainmail": {"cost": 8000, "atk": 0, "def": 11, "int": 0, "emoji": "⛓️"},
+    "Plate Armor": {"cost": 30000, "atk": 0, "def": 18, "int": 0, "emoji": "🛡️"},
+    "Aegis of the Gods": {"cost": 500000, "atk": 0, "def": 26, "int": 0, "emoji": "🌟"},
+
+    # Mage line (INT-focused)
+    "Apprentice Wand": {"cost": 2000, "atk": 0, "def": 0, "int": 3, "emoji": "🪄"},
+    "Ruby Staff": {"cost": 15000, "atk": 0, "def": 0, "int": 6, "emoji": "🦯"},
+    "Archmage Grimoire": {"cost": 80000, "atk": 0, "def": 0, "int": 11, "emoji": "📖"},
+    "Staff of the Cosmos": {"cost": 800000, "atk": 0, "def": 0, "int": 18, "emoji": "🌌"},
+
+    # Special chase item – still strong, but below stacked lootbox sets.
+    "Jad's Ascended Horseshoe": {"cost": 5000000, "atk": 18, "def": 8, "int": 4, "emoji": "🐴"},
 }
 
 ENEMIES = [
