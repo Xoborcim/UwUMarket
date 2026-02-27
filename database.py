@@ -440,7 +440,26 @@ async def equip_inventory_item(user_id, item_id):
 
         slot = item["slot"]
         if not slot:
-            return False, "That item cannot be equipped."
+            # Backfill slot from stats if possible (older items before RPG meta)
+            atk_b = int(item.get("atk_bonus", 0) if "atk_bonus" in item.keys() else 0)
+            def_b = int(item.get("def_bonus", 0) if "def_bonus" in item.keys() else 0)
+            int_b = int(item.get("int_bonus", 0) if "int_bonus" in item.keys() else 0)
+
+            if atk_b == 0 and def_b == 0 and int_b == 0:
+                return False, "That item cannot be equipped."
+
+            # Derive slot from the dominant stat
+            if atk_b >= def_b and atk_b >= int_b:
+                slot = "weapon"
+            elif def_b >= atk_b and def_b >= int_b:
+                slot = "armor"
+            else:
+                slot = "mage"
+
+            await db.execute(
+                "UPDATE inventory SET slot = ? WHERE item_id = ?",
+                (slot, item_id),
+            )
 
         await db.execute(
             "UPDATE inventory SET is_equipped = 0 WHERE user_id = ? AND slot = ?",
