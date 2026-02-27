@@ -180,9 +180,11 @@
                         <div class="tier-badge text-{{ item.get('tier', 'Common') }}">{{ item.get('tier', 'Common') }}</div>
                         {% if item.get('head_avatar_url') %}
                             <img src="{{ item.head_avatar_url }}" class="item-image">
-                        {% else %}
+                        {% elif item.get('has_image') %}
                             <img src="/images/{{ item.get('set_name', 'Base_Set') }}/{{ item.get('tier', 'Common') }}/{{ item['item_name'] }}.png" 
-                                 class="item-image" onerror="this.src='https://via.placeholder.com/300?text=No+Image'">
+                                 class="item-image">
+                        {% else %}
+                            <img src="https://via.placeholder.com/300?text=No+Image" class="item-image">
                         {% endif %}
                     </div>
                     <div class="item-content">
