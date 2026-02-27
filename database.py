@@ -433,17 +433,18 @@ async def equip_inventory_item(user_id, item_id):
             "SELECT * FROM inventory WHERE item_id = ? AND user_id = ? AND is_listed = 0",
             (item_id, user_id),
         ) as cursor:
-            item = await cursor.fetchone()
+            row = await cursor.fetchone()
 
-        if not item:
+        if not row:
             return False, "Item not found, not owned by you, or currently listed."
 
-        slot = item["slot"]
+        item = dict(row)
+        slot = item.get("slot")
         if not slot:
             # Backfill slot from stats if possible (older items before RPG meta)
-            atk_b = int(item.get("atk_bonus", 0) if "atk_bonus" in item.keys() else 0)
-            def_b = int(item.get("def_bonus", 0) if "def_bonus" in item.keys() else 0)
-            int_b = int(item.get("int_bonus", 0) if "int_bonus" in item.keys() else 0)
+            atk_b = int(item.get("atk_bonus", 0) or 0)
+            def_b = int(item.get("def_bonus", 0) or 0)
+            int_b = int(item.get("int_bonus", 0) or 0)
 
             if atk_b == 0 and def_b == 0 and int_b == 0:
                 return False, "That item cannot be equipped."
