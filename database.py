@@ -325,7 +325,10 @@ async def process_daily(user_id):
             user = await cursor.fetchone()
         
         if user and user['last_daily']:
-            last_daily = datetime.datetime.strptime(user['last_daily'], "%Y-%m-%d %H:%M:%S.%f")
+            try:
+                last_daily = datetime.datetime.strptime(user['last_daily'], "%Y-%m-%d %H:%M:%S.%f")
+            except ValueError:
+                last_daily = datetime.datetime.strptime(user['last_daily'], "%Y-%m-%d %H:%M:%S")
             next_daily = last_daily + datetime.timedelta(hours=24)
             if datetime.datetime.now() < next_daily:
                 ts = int(next_daily.timestamp())

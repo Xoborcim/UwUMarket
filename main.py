@@ -191,7 +191,12 @@ class MarketView(ui.View):
 @bot.tree.command(name="create")
 @app_commands.describe(question="The question", end_date="YYYY-MM-DD", end_time="HH:MM (24h)", duration_hours="Or just hours (e.g. 24)")
 async def create(interaction: discord.Interaction, question: str, end_date: str = None, end_time: str = None, duration_hours: int = None, option1: str = "YES", option2: str = "NO"):
-    
+    if end_date and duration_hours is not None:
+        return await interaction.response.send_message("❌ Use either `end_date` or `duration_hours`, not both.", ephemeral=True)
+
+    if duration_hours is not None and duration_hours <= 0:
+        return await interaction.response.send_message("❌ Duration must be greater than 0 hours.", ephemeral=True)
+
     if duration_hours and duration_hours > 8760:
         return await interaction.response.send_message("❌ Duration too long. Max is 1 year.", ephemeral=True)
 
@@ -217,10 +222,12 @@ async def create(interaction: discord.Interaction, question: str, end_date: str 
     view = MarketView(market_id, [option1, option2], question, close_dt)
     
     channel = bot.get_channel(MARKET_CHANNEL_ID)
-    await interaction.response.send_message(f"✅ Market created in {channel.mention}!", ephemeral=True)
     if channel:
+        await interaction.response.send_message(f"✅ Market created in {channel.mention}!", ephemeral=True)
         msg = await channel.send(embed=embed, view=view)
         await db.set_market_message_id(market_id, msg.id) # Added Await!
+    else:
+        await interaction.response.send_message("❌ Market created, but the market channel is not configured or reachable.", ephemeral=True)
 
 @bot.tree.command(name="resolve")
 async def resolve(interaction: discord.Interaction, market_id: int, winner: str):
@@ -270,6 +277,9 @@ async def daily(interaction: discord.Interaction):
 
 @bot.tree.command(name="close")
 async def close(interaction: discord.Interaction, market_id: int):
+    has_perm = interaction.user.guild_permissions.administrator or discord.utils.get(interaction.user.roles, name="Grand Juror")
+    if not has_perm:
+        return await interaction.response.send_message("⛔ Access Denied.", ephemeral=True)
     await db.close_market_betting(market_id) # Added Await!
     await interaction.response.send_message(f"🔒 Market {market_id} closed.", ephemeral=True)
 

@@ -468,6 +468,7 @@ class PersonaSession(discord.ui.View):
         self._log("─── Round ───")
 
         # Status ticks on players
+        stunned_players = set()
         for uid in self.alive_players():
             p = self.party[uid]
             if p["status"] == "poison":
@@ -478,6 +479,9 @@ class PersonaSession(discord.ui.View):
                 tick = max(1, p["max_hp"] // 8)
                 p["hp"] = max(0, p["hp"] - tick)
                 self._log(f"🔥 {p['user'].display_name} −{tick} (burn)")
+            elif p["status"] == "shock":
+                stunned_players.add(uid)
+                self._log(f"⚡ {p['user'].display_name} is shocked and can't act!")
             if p["status_dur"] > 0:
                 p["status_dur"] -= 1
                 if p["status_dur"] <= 0:
@@ -487,6 +491,8 @@ class PersonaSession(discord.ui.View):
         for uid, move in list(self.pending_moves.items()):
             p = self.party[uid]
             if p["hp"] <= 0:
+                continue
+            if uid in stunned_players:
                 continue
             self._execute_player_move(uid, p, move)
 
