@@ -119,13 +119,37 @@
                              class="item-image" onerror="this.src='https://via.placeholder.com/300?text=No+Image'">
                     </div>
                     <div class="item-content">
-                        <div class="item-name">{{ item['item_name'] }}</div>
-                        <div style="color: #64748b; font-size: 0.8rem;">Item ID: {{ item['item_id'] }}</div>
+                        <div class="item-name">
+                            {{ item['item_name'] }}
+                            {% if item.get('is_equipped') %}
+                                <span style="font-size:0.75rem;color:#22c55e;font-weight:700;">(Equipped)</span>
+                            {% endif %}
+                        </div>
+                        <div style="color: #64748b; font-size: 0.8rem;">
+                            Item ID: {{ item['item_id'] }}
+                            {% if item.get('slot') %}
+                                • Slot: {{ item.get('slot')|title }}
+                            {% endif %}
+                        </div>
                         
                         <div class="button-group">
                             <button class="sell-button" onclick='openModal({{ item["item_id"] | tojson }}, {{ item["item_name"] | tojson }})'>Sell</button>
                             <button class="scrap-button" onclick='scrapItem({{ item["item_id"] }})'>Scrap</button>
                         </div>
+                        {% if item.get('slot') %}
+                        <div class="button-group" style="margin-top:8px;">
+                            <button class="sell-button" style="background:#22c55e;"
+                                    onclick='equipItem({{ item["item_id"] }})'>
+                                {% if item.get('is_equipped') %}Re-equip{% else %}Equip{% endif %}
+                            </button>
+                            {% if item.get('is_equipped') %}
+                            <button class="scrap-button" style="background:#475569;"
+                                    onclick='unequipSlot({{ item.get("slot") | tojson }})'>
+                                Unequip Slot
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}
@@ -247,6 +271,48 @@
             } finally {
                 confirmBtn.innerText = "Confirm Sale";
                 confirmBtn.disabled = false;
+            }
+        }
+
+        // --- EQUIP / UNEQUIP LOGIC ---
+        async function equipItem(itemId) {
+            try {
+                const response = await fetch('/api/equip_item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: itemId })
+                });
+                const result = await response.json();
+                const banner = document.getElementById('notification-banner');
+                banner.innerText = result.message;
+                banner.style.display = 'block';
+                banner.style.backgroundColor = result.success ? '#22c55e' : '#e74c3c';
+                if (result.success) {
+                    // Reload to refresh equipped badges
+                    setTimeout(() => window.location.reload(), 600);
+                }
+            } catch (error) {
+                alert('Server error occurred while equipping.');
+            }
+        }
+
+        async function unequipSlot(slot) {
+            try {
+                const response = await fetch('/api/unequip_slot', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ slot: slot })
+                });
+                const result = await response.json();
+                const banner = document.getElementById('notification-banner');
+                banner.innerText = result.message;
+                banner.style.display = 'block';
+                banner.style.backgroundColor = result.success ? '#22c55e' : '#e74c3c';
+                if (result.success) {
+                    setTimeout(() => window.location.reload(), 600);
+                }
+            } catch (error) {
+                alert('Server error occurred while unequipping.');
             }
         }
     </script>
