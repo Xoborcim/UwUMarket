@@ -137,7 +137,8 @@
                             <button class="scrap-button" onclick='scrapItem({{ item["item_id"] }})'>Scrap</button>
                         </div>
                         {% set has_stats = (item.get('atk_bonus',0) or item.get('def_bonus',0) or item.get('int_bonus',0)) %}
-                        {% if item.get('slot') or has_stats %}
+                        {% set is_rpg = item.get('set_name','').startswith('RPG_') or item.get('item_type') == 'Gear' %}
+                        {% if item.get('slot') or has_stats or is_rpg %}
                         <div class="button-group" style="margin-top:8px;">
                             <button class="sell-button" style="background:#22c55e;"
                                     onclick='equipItem({{ item["item_id"] }})'>
