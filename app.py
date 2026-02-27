@@ -612,6 +612,504 @@ def leaderboard():
                            strongest=strongest,
                            collectors=collectors,
                            active_page="leaderboard")
+
+# --- CASINO (mirrors cogs/casino.py logic for web) ---
+CASINO_SUITS = {'H': '♥', 'D': '♦', 'C': '♣', 'S': '♠'}
+CASINO_RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+
+def _casino_deck():
+    deck = [f"{r}{s}" for r in CASINO_RANKS for s in CASINO_SUITS.keys()]
+    random.shuffle(deck)
+    return deck
+
+def _bj_score(hand):
+    score, aces = 0, 0
+    for card in hand:
+        rank = card[:-1]
+        if rank in ['J', 'Q', 'K']:
+            score += 10
+        elif rank == 'A':
+            score += 11
+            aces += 1
+        else:
+            score += int(rank)
+    while score > 21 and aces > 0:
+        score -= 10
+        aces -= 1
+    return score
+
+@app.route('/casino')
+def casino_page():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return render_template('casino.html', active_page='casino')
+
+def _require_casino_user():
+    if 'user_id' not in session:
+        return None
+    return session['user_id']
+
+@app.route('/api/casino/slots', methods=['POST'])
+def api_casino_slots():
+    user_id = _require_casino_user()
+    if not user_id:
+        return {"success": False, "error": "Not logged in"}, 401
+    data = request.get_json() or {}
+    bet = float(data.get('bet', 0))
+    if bet < 1.0:
+        return {"success": False, "error": "Minimum bet is $1.00"}
+    if not run_async(db.update_balance(user_id, -bet)):
+        return {"success": False, "error": "Insufficient funds"}
+    emojis = ["🍒", "🍋", "🍇", "🔔", "💎", "7️⃣"]
+    result = [random.choice(emojis) for _ in range(3)]
+    if result[0] == result[1] == result[2]:
+        winnings = bet * 10
+        net, tax = run_async(db.process_town_payout(user_id, winnings))
+        new_bal = run_async(db.get_balance(user_id))
+        return {"success": True, "result": result, "win": "jackpot", "multiplier": 10, "net": net, "tax": tax, "new_balance": new_bal}
+    if result[0] == result[1] or result[1] == result[2] or result[0] == result[2]:
+        winnings = bet * 2
+        net, tax = run_async(db.process_town_payout(user_id, winnings))
+        new_bal = run_async(db.get_balance(user_id))
+        return {"success": True, "result": result, "win": "pair", "multiplier": 2, "net": net, "tax": tax, "new_balance": new_bal}
+    new_bal = run_async(db.get_balance(user_id))
+    return {"success": True, "result": result, "win": "loss", "net": 0, "tax": 0, "new_balance": new_bal}
+
+@app.route('/api/casino/roulette', methods=['POST'])
+def api_casino_roulette():
+    user_id = _require_casino_user()
+    if not user_id:
+        return {"success": False, "error": "Not logged in"}, 401
+    data = request.get_json() or {}
+    bet = float(data.get('bet', 0))
+    choice = (data.get('choice') or '').lower()
+    if choice not in ('red', 'black', 'green'):
+        return {"success": False, "error": "Choice must be red, black, or green"}
+    if bet < 1.0:
+        return {"success": False, "error": "Minimum bet is $1.00"}
+    if not run_async(db.update_balance(user_id, -bet)):
+        return {"success": False, "error": "Insufficient funds"}
+    roll = random.randint(0, 36)
+    if roll == 0:
+        color = "green"
+    elif roll % 2 == 0:
+        color = "black"
+    else:
+        color = "red"
+    if choice == color:
+        mult = 14 if color == "green" else 2
+        winnings = bet * mult
+        net, tax = run_async(db.process_town_payout(user_id, winnings))
+        new_bal = run_async(db.get_balance(user_id))
+        return {"success": True, "number": roll, "color": color, "won": True, "multiplier": mult, "net": net, "tax": tax, "new_balance": new_bal}
+    new_bal = run_async(db.get_balance(user_id))
+    return {"success": True, "number": roll, "color": color, "won": False, "new_balance": new_bal}
+
+@app.route('/api/casino/blackjack/start', methods=['POST'])
+def api_casino_blackjack_start():
+    user_id = _require_casino_user()
+    if not user_id:
+        return {"success": False, "error": "Not logged in"}, 401
+    data = request.get_json() or {}
+    bet = float(data.get('bet', 0))
+    if bet < 5.0:
+        return {"success": False, "error": "Minimum bet is $5.00"}
+    if not run_async(db.update_balance(user_id, -bet)):
+        return {"success": False, "error": "Insufficient funds"}
+    deck = _casino_deck()
+    dealer = [deck.pop(), deck.pop()]
+    hand = [deck.pop(), deck.pop()]
+    p_score = _bj_score(hand)
+    d_score = _bj_score(dealer)
+    game_over = False
+    status = "playing"
+    net, tax = 0.0, 0.0
+    if p_score == 21:
+        game_over = True
+        if d_score == 21:
+            status = "push"
+            run_async(db.update_balance(user_id, bet))
+        else:
+            status = "blackjack"
+            net, tax = run_async(db.process_town_payout(user_id, bet * 2.5))
+    else:
+        status = "Playing"
+    session['casino_bj'] = {
+        'deck': deck, 'dealer': dealer, 'hands': [hand], 'bets': [bet],
+        'statuses': [status], 'active_idx': 0, 'game_over': game_over,
+        'net_payouts': [net], 'taxes': [tax], 'initial_bet': bet
+    }
+    new_bal = run_async(db.get_balance(user_id))
+    return {
+        "success": True, "dealer": dealer, "dealer_hidden": True, "player_hands": [hand],
+        "player_scores": [_bj_score(hand)], "statuses": [status], "game_over": game_over,
+        "net": net, "tax": tax, "new_balance": new_bal
+    }
+
+@app.route('/api/casino/blackjack/action', methods=['POST'])
+def api_casino_blackjack_action():
+    user_id = _require_casino_user()
+    if not user_id:
+        return {"success": False, "error": "Not logged in"}, 401
+    state = session.get('casino_bj')
+    if not state:
+        return {"success": False, "error": "No active blackjack game"}
+    data = request.get_json() or {}
+    action = (data.get('action') or '').lower()
+    if action not in ('hit', 'stand', 'double', 'split'):
+        return {"success": False, "error": "Invalid action"}
+    deck = state['deck']
+    dealer = state['dealer']
+    hands = state['hands']
+    bets = state['bets']
+    statuses = state['statuses']
+    active_idx = state['active_idx']
+    initial_bet = state['initial_bet']
+    net_payouts = state.get('net_payouts', [0.0] * len(hands))
+    taxes = state.get('taxes', [0.0] * len(hands))
+    game_over = state['game_over']
+
+    if game_over:
+        session.pop('casino_bj', None)
+        return {"success": False, "error": "Game already over"}
+
+    idx = active_idx
+    hand = hands[idx]
+    bet = bets[idx]
+
+    if action == "hit":
+        hand.append(deck.pop())
+        if _bj_score(hand) > 21:
+            statuses[idx] = "lost"
+            idx += 1
+            while idx < len(hands) and statuses[idx] != "Playing":
+                idx += 1
+            if idx >= len(hands):
+                game_over = True
+                d_score = _bj_score(dealer)
+                while d_score < 17:
+                    dealer.append(deck.pop())
+                    d_score = _bj_score(dealer)
+                total_net, total_tax = 0.0, 0.0
+                for i in range(len(hands)):
+                    if statuses[i] == "Playing":
+                        ps = _bj_score(hands[i])
+                        if ps > 21:
+                            statuses[i] = "lost"
+                        elif d_score > 21 or ps > d_score:
+                            statuses[i] = "won"
+                            w = bets[i] * 2
+                            n, t = run_async(db.process_town_payout(user_id, w))
+                            net_payouts[i], taxes[i] = n, t
+                            total_net += n
+                            total_tax += t
+                        elif ps < d_score:
+                            statuses[i] = "lost"
+                        else:
+                            statuses[i] = "push"
+                            run_async(db.update_balance(user_id, bets[i]))
+                state['game_over'] = True
+                state['dealer'] = dealer
+                state['statuses'] = statuses
+                state['net_payouts'] = net_payouts
+                state['taxes'] = taxes
+                session['casino_bj'] = state
+                new_bal = run_async(db.get_balance(user_id))
+                return {"success": True, "dealer": dealer, "dealer_hidden": False, "player_hands": hands,
+                        "player_scores": [_bj_score(h) for h in hands], "statuses": statuses, "game_over": True,
+                        "net": sum(net_payouts), "tax": sum(taxes), "new_balance": new_bal}
+            state['active_idx'] = idx
+            state['hands'] = hands
+            state['statuses'] = statuses
+            session['casino_bj'] = state
+            new_bal = run_async(db.get_balance(user_id))
+            return {"success": True, "dealer": dealer, "dealer_hidden": True, "player_hands": hands,
+                    "player_scores": [_bj_score(h) for h in hands], "statuses": statuses, "game_over": False, "new_balance": new_bal}
+        state['deck'] = deck
+        state['hands'] = hands
+        session['casino_bj'] = state
+        new_bal = run_async(db.get_balance(user_id))
+        return {"success": True, "dealer": dealer, "dealer_hidden": True, "player_hands": hands,
+                "player_scores": [_bj_score(h) for h in hands], "statuses": statuses, "game_over": False, "new_balance": new_bal}
+
+    if action == "stand":
+        idx += 1
+        while idx < len(hands) and statuses[idx] != "Playing":
+            idx += 1
+        if idx >= len(hands):
+            game_over = True
+            d_score = _bj_score(dealer)
+            while d_score < 17:
+                dealer.append(deck.pop())
+                d_score = _bj_score(dealer)
+            total_net, total_tax = 0.0, 0.0
+            for i in range(len(hands)):
+                if statuses[i] != "Playing":
+                    continue
+                ps = _bj_score(hands[i])
+                if ps > 21:
+                    statuses[i] = "lost"
+                elif d_score > 21 or ps > d_score:
+                    statuses[i] = "won"
+                    n, t = run_async(db.process_town_payout(user_id, bets[i] * 2))
+                    net_payouts[i], taxes[i] = n, t
+                    total_net += n
+                    total_tax += t
+                elif ps < d_score:
+                    statuses[i] = "lost"
+                else:
+                    statuses[i] = "push"
+                    run_async(db.update_balance(user_id, bets[i]))
+            state['game_over'] = True
+            state['dealer'] = dealer
+            state['statuses'] = statuses
+            state['net_payouts'] = net_payouts
+            state['taxes'] = taxes
+            session.pop('casino_bj', None)
+            new_bal = run_async(db.get_balance(user_id))
+            return {"success": True, "dealer": dealer, "dealer_hidden": False, "player_hands": hands,
+                    "player_scores": [_bj_score(h) for h in hands], "statuses": statuses, "game_over": True,
+                    "net": total_net, "tax": total_tax, "new_balance": new_bal}
+        state['active_idx'] = idx
+        session['casino_bj'] = state
+        new_bal = run_async(db.get_balance(user_id))
+        return {"success": True, "dealer": dealer, "dealer_hidden": True, "player_hands": hands,
+                "player_scores": [_bj_score(h) for h in hands], "statuses": statuses, "game_over": False, "new_balance": new_bal}
+
+    if action == "double":
+        if not run_async(db.update_balance(user_id, -bet)):
+            return {"success": False, "error": "Insufficient funds to double"}
+        bets[idx] *= 2
+        hand.append(deck.pop())
+        if _bj_score(hand) > 21:
+            statuses[idx] = "lost"
+        idx += 1
+        while idx < len(hands) and statuses[idx] != "Playing":
+            idx += 1
+        if idx >= len(hands):
+            game_over = True
+            d_score = _bj_score(dealer)
+            while d_score < 17:
+                dealer.append(deck.pop())
+                d_score = _bj_score(dealer)
+            for i in range(len(hands)):
+                if statuses[i] != "Playing":
+                    continue
+                ps = _bj_score(hands[i])
+                if ps > 21:
+                    statuses[i] = "lost"
+                elif d_score > 21 or ps > d_score:
+                    statuses[i] = "won"
+                    n, t = run_async(db.process_town_payout(user_id, bets[i] * 2))
+                    net_payouts[i], taxes[i] = n, t
+                elif ps < d_score:
+                    statuses[i] = "lost"
+                else:
+                    statuses[i] = "push"
+                    run_async(db.update_balance(user_id, bets[i]))
+            state['game_over'] = True
+            state['dealer'] = dealer
+            state['statuses'] = statuses
+            state['bets'] = bets
+            state['net_payouts'] = net_payouts
+            state['taxes'] = taxes
+            session.pop('casino_bj', None)
+            new_bal = run_async(db.get_balance(user_id))
+            return {"success": True, "dealer": dealer, "dealer_hidden": False, "player_hands": hands,
+                    "player_scores": [_bj_score(h) for h in hands], "statuses": statuses, "game_over": True,
+                    "net": sum(net_payouts), "tax": sum(taxes), "new_balance": new_bal}
+        state['deck'] = deck
+        state['hands'] = hands
+        state['bets'] = bets
+        state['statuses'] = statuses
+        state['active_idx'] = idx
+        session['casino_bj'] = state
+        new_bal = run_async(db.get_balance(user_id))
+        return {"success": True, "dealer": dealer, "dealer_hidden": True, "player_hands": hands,
+                "player_scores": [_bj_score(h) for h in hands], "statuses": statuses, "game_over": False, "new_balance": new_bal}
+
+    if action == "split":
+        if len(hand) != 2 or hand[0][:-1] != hand[1][:-1]:
+            return {"success": False, "error": "Can only split a pair"}
+        if not run_async(db.update_balance(user_id, -initial_bet)):
+            return {"success": False, "error": "Insufficient funds to split"}
+        c2 = hand.pop()
+        hand.append(deck.pop())
+        new_hand = [c2, deck.pop()]
+        hands.insert(idx + 1, new_hand)
+        bets.insert(idx + 1, initial_bet)
+        statuses.insert(idx + 1, "Playing")
+        net_payouts.insert(idx + 1, 0.0)
+        taxes.insert(idx + 1, 0.0)
+        state['deck'] = deck
+        state['hands'] = hands
+        state['bets'] = bets
+        state['statuses'] = statuses
+        state['net_payouts'] = net_payouts
+        state['taxes'] = taxes
+        session['casino_bj'] = state
+        new_bal = run_async(db.get_balance(user_id))
+        return {"success": True, "dealer": dealer, "dealer_hidden": True, "player_hands": hands,
+                "player_scores": [_bj_score(h) for h in hands], "statuses": statuses, "game_over": False, "new_balance": new_bal}
+
+    return {"success": False, "error": "Unknown action"}
+
+@app.route('/api/casino/slap/start', methods=['POST'])
+def api_casino_slap_start():
+    user_id = _require_casino_user()
+    if not user_id:
+        return {"success": False, "error": "Not logged in"}, 401
+    data = request.get_json() or {}
+    bet = float(data.get('bet', 0))
+    if bet <= 0:
+        return {"success": False, "error": "Bet must be positive"}
+    if not run_async(db.update_balance(user_id, -bet)):
+        return {"success": False, "error": "Insufficient funds"}
+    session['casino_slap'] = {'bet': bet, 'multiplier': 1.0, 'slaps': 0, 'base_risk': 0.05, 'risk_increase': 0.07}
+    new_bal = run_async(db.get_balance(user_id))
+    return {"success": True, "bet": bet, "multiplier": 1.0, "slaps": 0, "risk_pct": 5, "new_balance": new_bal}
+
+def _slap_risk(slap_state):
+    return min(0.95, slap_state['base_risk'] + slap_state['slaps'] * slap_state['risk_increase'])
+
+@app.route('/api/casino/slap/action', methods=['POST'])
+def api_casino_slap_action():
+    user_id = _require_casino_user()
+    if not user_id:
+        return {"success": False, "error": "Not logged in"}, 401
+    state = session.get('casino_slap')
+    if not state:
+        return {"success": False, "error": "No active slap game. Start one first."}
+    data = request.get_json() or {}
+    action = (data.get('action') or '').lower()
+    if action == "slap":
+        risk = _slap_risk(state)
+        if random.random() < risk:
+            session.pop('casino_slap', None)
+            new_bal = run_async(db.get_balance(user_id))
+            return {"success": True, "action": "slap", "farted": True, "multiplier": state['multiplier'], "slaps": state['slaps'], "new_balance": new_bal}
+        state['slaps'] += 1
+        state['multiplier'] *= 1.15
+        risk_pct = int(_slap_risk(state) * 100)
+        session['casino_slap'] = state
+        return {"success": True, "action": "slap", "farted": False, "multiplier": state['multiplier'], "slaps": state['slaps'], "risk_pct": risk_pct}
+    if action == "cashout":
+        if state['slaps'] == 0:
+            return {"success": False, "error": "Slap at least once before cashing out"}
+        winnings = state['bet'] * state['multiplier']
+        net, tax = run_async(db.process_town_payout(user_id, winnings))
+        session.pop('casino_slap', None)
+        new_bal = run_async(db.get_balance(user_id))
+        return {"success": True, "action": "cashout", "net": net, "tax": tax, "slaps": state['slaps'], "multiplier": state['multiplier'], "new_balance": new_bal}
+    return {"success": False, "error": "Invalid action"}
+
+@app.route('/api/casino/mines/start', methods=['POST'])
+def api_casino_mines_start():
+    user_id = _require_casino_user()
+    if not user_id:
+        return {"success": False, "error": "Not logged in"}, 401
+    data = request.get_json() or {}
+    bet = float(data.get('bet', 0))
+    mines = int(data.get('mines', 3))
+    if bet <= 0:
+        return {"success": False, "error": "Bet must be positive"}
+    if mines < 1 or mines > 19:
+        return {"success": False, "error": "Mines must be 1–19"}
+    if not run_async(db.update_balance(user_id, -bet)):
+        return {"success": False, "error": "Insufficient funds"}
+    total_tiles = 20
+    safe = total_tiles - mines
+    grid = [True] * mines + [False] * safe
+    random.shuffle(grid)
+    session['casino_mines'] = {
+        'bet': bet, 'mines': mines, 'grid': grid, 'revealed': [False] * 20,
+        'multiplier': 1.0, 'safe_revealed': 0, 'ended': False
+    }
+    new_bal = run_async(db.get_balance(user_id))
+    return {"success": True, "multiplier": 1.0, "safe_revealed": 0, "new_balance": new_bal}
+
+def _mines_next_mult(revealed_safe, mine_count, total_tiles=20):
+    remaining = total_tiles - revealed_safe
+    remaining_safe = (total_tiles - mine_count) - revealed_safe
+    if remaining_safe <= 0:
+        return None
+    odds = remaining / remaining_safe
+    return 1.0 * (odds * 0.98)  # initial mult 1.0, then chain
+
+@app.route('/api/casino/mines/reveal', methods=['POST'])
+def api_casino_mines_reveal():
+    user_id = _require_casino_user()
+    if not user_id:
+        return {"success": False, "error": "Not logged in"}, 401
+    state = session.get('casino_mines')
+    if not state or state['ended']:
+        return {"success": False, "error": "No active mines game"}
+    data = request.get_json() or {}
+    tile = int(data.get('tile'))
+    if tile < 0 or tile >= 20 or state['revealed'][tile]:
+        return {"success": False, "error": "Invalid tile"}
+    state['revealed'][tile] = True
+    if state['grid'][tile]:
+        state['ended'] = True
+        session.pop('casino_mines', None)
+        new_bal = run_async(db.get_balance(user_id))
+        return {"success": True, "mine": True, "revealed": state['revealed'], "game_over": True, "new_balance": new_bal}
+    state['safe_revealed'] += 1
+    safe_count = 20 - state['mines']
+    prev_mult = state['multiplier']
+    state['multiplier'] = prev_mult * ((20 - state['safe_revealed']) / (safe_count - state['safe_revealed']) * 0.98) if (safe_count - state['safe_revealed']) > 0 else prev_mult
+    session['casino_mines'] = state
+    new_bal = run_async(db.get_balance(user_id))
+    if state['safe_revealed'] >= safe_count:
+        winnings = state['bet'] * state['multiplier']
+        net, tax = run_async(db.process_town_payout(user_id, winnings))
+        session.pop('casino_mines', None)
+        new_bal = run_async(db.get_balance(user_id))
+        return {"success": True, "mine": False, "tile": tile, "multiplier": state['multiplier'], "perfect": True, "net": net, "tax": tax, "game_over": True, "new_balance": new_bal}
+    return {"success": True, "mine": False, "tile": tile, "multiplier": state['multiplier'], "safe_revealed": state['safe_revealed'],
+            "gems_left": safe_count - state['safe_revealed'], "game_over": False, "new_balance": new_bal}
+
+@app.route('/api/casino/mines/cashout', methods=['POST'])
+def api_casino_mines_cashout():
+    user_id = _require_casino_user()
+    if not user_id:
+        return {"success": False, "error": "Not logged in"}, 401
+    state = session.get('casino_mines')
+    if not state or state['ended']:
+        return {"success": False, "error": "No active mines game"}
+    if state['safe_revealed'] == 0:
+        return {"success": False, "error": "Reveal at least one gem first"}
+    winnings = state['bet'] * state['multiplier']
+    net, tax = run_async(db.process_town_payout(user_id, winnings))
+    session.pop('casino_mines', None)
+    new_bal = run_async(db.get_balance(user_id))
+    return {"success": True, "net": net, "tax": tax, "multiplier": state['multiplier'], "game_over": True, "new_balance": new_bal}
+
+@app.route('/api/casino/plinko', methods=['POST'])
+def api_casino_plinko():
+    user_id = _require_casino_user()
+    if not user_id:
+        return {"success": False, "error": "Not logged in"}, 401
+    data = request.get_json() or {}
+    bet = float(data.get('bet', 0))
+    if bet <= 0:
+        return {"success": False, "error": "Bet must be positive"}
+    if not run_async(db.update_balance(user_id, -bet)):
+        return {"success": False, "error": "Insufficient funds"}
+    multipliers = [10.0, 4.0, 2.2, 1.4, 0.8, 1.4, 2.2, 4.0, 10.0]
+    center = len(multipliers) // 2
+    idx = center
+    moves = []
+    for _ in range(10):
+        step = random.choice((-1, 1))
+        idx = max(0, min(len(multipliers) - 1, idx + step))
+        moves.append("L" if step < 0 else "R")
+    mult = multipliers[idx]
+    gross = bet * mult
+    net, tax = run_async(db.process_town_payout(user_id, gross))
+    new_bal = run_async(db.get_balance(user_id))
+    return {"success": True, "landed_idx": idx, "multiplier": mult, "moves": moves, "gross": gross, "net": net, "tax": tax, "new_balance": new_bal}
+
 # --- START THE ENGINE ---
 
 if __name__ == '__main__':
