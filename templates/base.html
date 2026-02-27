@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polyville | {% block title %}{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #050816;
+            --card-bg: #111827;
+            --accent-color: #e94560;
+            --accent-soft: rgba(233, 69, 96, 0.15);
+            --text-main: #e5e7eb;
+            --text-muted: #9ca3af;
+            --border-color: #1f2937;
+            --common: #9ca3af;
+            --uncommon: #22c55e;
+            --rare: #3b82f6;
+            --epic: #a855f7;
+            --legendary: #facc15;
+            --mythic: #f97316;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background: radial-gradient(circle at top, #111827 0, #020617 60%, #000 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- TOP NAVBAR --- */
+        nav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+            padding: 0.75rem 6%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+        }
+
+        .logo {
+            font-weight: 800;
+            font-size: 1.3rem;
+            color: var(--accent-color);
+            text-decoration: none;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 18px;
+            font-size: 0.9rem;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-muted);
+            font-weight: 600;
+            padding-bottom: 4px;
+            border-bottom: 2px solid transparent;
+            transition: color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent-color);
+        }
+
+        .nav-links a.active {
+            color: #f9fafb;
+            border-color: var(--accent-color);
+        }
+
+        .user-status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-pill {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 14px;
+            border-radius: 999px;
+            background: rgba(31, 41, 55, 0.9);
+            border: 1px solid rgba(55, 65, 81, 0.7);
+            font-size: 0.85rem;
+            text-decoration: none;
+            color: #f9fafb;
+        }
+
+        .user-pill span.separator {
+            color: #4b5563;
+        }
+
+        #gold-counter {
+            color: var(--legendary);
+            font-weight: 700;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+
+        .logout-link {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-decoration: none;
+        }
+
+        /* MAIN LAYOUT */
+        .page-shell {
+            flex: 1;
+            padding: 32px 6% 40px;
+        }
+
+        .page-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            gap: 16px;
+        }
+
+        .page-title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+        }
+
+        .page-subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: #fecaca;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        .content-card {
+            background: rgba(17, 24, 39, 0.9);
+            border-radius: 18px;
+            border: 1px solid rgba(31, 41, 55, 0.9);
+            box-shadow: 0 24px 80px rgba(15, 23, 42, 0.75);
+            padding: 24px 22px;
+        }
+
+        footer {
+            border-top: 1px solid rgba(30, 64, 175, 0.25);
+            padding: 10px 6% 14px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #020617;
+        }
+
+        footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+
+        @media (max-width: 768px) {
+            nav {
+                padding: 0.75rem 4%;
+            }
+            .nav-links {
+                display: none;
+            }
+            .page-shell {
+                padding: 24px 4% 32px;
+            }
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+    <nav>
+        <div class="nav-left">
+            <a href="/market" class="logo">Polyville</a>
+            <div class="nav-links">
+                <a href="/market" class="{% if active_page == 'market' %}active{% endif %}">Market</a>
+                <a href="/inventory" class="{% if active_page == 'inventory' %}active{% endif %}">Inventory</a>
+                <a href="/lootbox" class="{% if active_page == 'lootbox' %}active{% endif %}">Lootboxes</a>
+                <a href="/town" class="{% if active_page == 'town' %}active{% endif %}">Town Hall</a>
+                <a href="/exchange" class="{% if active_page == 'exchange' %}active{% endif %}">Exchange</a>
+                <a href="/leaderboard" class="{% if active_page == 'leaderboard' %}active{% endif %}">Leaderboard</a>
+            </div>
+        </div>
+        <div class="user-status">
+            {% if session.get('user_id') %}
+                <a href="/profile/{{ session['user_id'] }}" class="user-pill">
+                    <span>👤 <strong>{{ session['username'] }}</strong></span>
+                    <span class="separator">|</span>
+                    <span id="gold-counter">💰 Loading...</span>
+                </a>
+                <a href="/logout" class="logout-link">Logout</a>
+            {% else %}
+                <a href="/login" class="user-pill">Login with Discord</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div class="page-shell">
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer>
+        <span>Polyville RPG & Economy</span>
+        <span><a href="/market">Home</a> · v1.0</span>
+    </footer>
+
+    <script>
+        async function fetchLiveGoldBase() {
+            const goldEl = document.getElementById('gold-counter');
+            if (!goldEl) return;
+            try {
+                const response = await fetch('/api/gold');
+                const data = await response.json();
+                if (data.success) {
+                    const formatted = data.gold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    goldEl.textContent = '💰 $' + formatted;
+                }
+            } catch (e) {}
+        }
+        fetchLiveGoldBase();
+        setInterval(fetchLiveGoldBase, 10000);
+    </script>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
+
