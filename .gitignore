@@ -14,7 +14,6 @@ cogs/__pycache__/
 *.pyo
 
 # --- Bot Specific ---
-lootboxes/
 *.log
 
 # --- OS & Editor Files (Optional but Recommended) ---
