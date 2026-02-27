@@ -45,6 +45,17 @@ RECIPES = {
     "Excalibur": {"Diamond": 3, "Gold Ore": 3, "Iron Ore": 5}
 }
 
+# Crafting outputs become equippable RPG gear (weapon/armor/mage slot).
+# Stats mirror RPG shop gear so crafted items are meaningful in `/rpg play`.
+CRAFTED_GEAR = {
+    "Iron Longsword": {"slot": "weapon", "atk_bonus": 25, "def_bonus": 0, "int_bonus": 0},
+    "Steel Halberd": {"slot": "weapon", "atk_bonus": 30, "def_bonus": 0, "int_bonus": 0},
+    "Golden Relic": {"slot": "mage", "atk_bonus": 0, "def_bonus": 0, "int_bonus": 0},
+    "Aegis Plate Armor": {"slot": "armor", "atk_bonus": 0, "def_bonus": 18, "int_bonus": 0},
+    "Obsidian Scythe": {"slot": "weapon", "atk_bonus": 35, "def_bonus": 0, "int_bonus": 0},
+    "Excalibur": {"slot": "weapon", "atk_bonus": 45, "def_bonus": 0, "int_bonus": 0},
+}
+
 # Added Async/Aiosqlite Support here!
 async def consume_materials(user_id, materials):
     async with aiosqlite.connect(db.DB_NAME) as conn:
@@ -618,7 +629,18 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
         success, msg = await consume_materials(interaction.user.id, materials) # Added Await!
         
         if success:
-            await db.add_item(interaction.user.id, recipe_name, "Gear", "RPG_Crafted") # Added Await!
+            gear = CRAFTED_GEAR.get(recipe_name, {})
+            await db.add_item(
+                interaction.user.id,
+                recipe_name,
+                "Gear",
+                "RPG_Crafted",
+                item_type="Gear",
+                slot=gear.get("slot"),
+                atk_bonus=gear.get("atk_bonus", 0),
+                def_bonus=gear.get("def_bonus", 0),
+                int_bonus=gear.get("int_bonus", 0),
+            ) # Added Await!
             await interaction.response.send_message(f"🔨 **Success!** You forged the **{recipe_name}**! It is now in your inventory.")
         else:
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)

@@ -62,6 +62,28 @@ BOSSES = [
     {"name": "Archdemon", "hp": 140, "atk": 16, "def": 5, "emoji": "👿", "effect": "burn", "chance": 0.25, "weakness": "frostbite"}
 ]
 
+# --- DUNGEON THEMES (for future gimmicks + enemy pools) ---
+DUNGEON_THEMES = {
+    "Ruined Crypt": {
+        "enemies": {"Skeleton", "Goblin", "Cult Sorcerer"},
+        "bosses": {"Lich King"},
+        "gimmick": "Undead halls and dark magic.",
+        "emoji": "🪦",
+    },
+    "Frost Caverns": {
+        "enemies": {"Ice Wraith", "Skeleton", "Acid Slime"},
+        "bosses": {"Elder Dragon", "Lich King"},
+        "gimmick": "Icy tunnels where frost reigns.",
+        "emoji": "🧊",
+    },
+    "Infernal Depths": {
+        "enemies": {"Fire Elemental", "Orc Berserker", "Cult Sorcerer"},
+        "bosses": {"Archdemon", "Elder Dragon"},
+        "gimmick": "Scorching chambers and raging flames.",
+        "emoji": "🌋",
+    },
+}
+
 ITEMS = [
     {"name": "Bandage", "type": "heal", "val": 25, "emoji": "🩹", "desc": "Restores 25 HP", "min_floor": 1},
     {"name": "Health Potion", "type": "heal", "val": 50, "emoji": "🧪", "desc": "Restores 50 HP", "min_floor": 1},
@@ -283,9 +305,10 @@ class RPGSession(discord.ui.View):
         self.session_id = str(random.randint(1000, 9999)) 
         self.message = None 
         self.party = {}
+        self.theme = random.choice(list(DUNGEON_THEMES.keys())) if DUNGEON_THEMES else "Default"
         
         for user in party_members:
-            gear_data, class_name = profiles[user.id]
+            gear_data, class_name, equipped_items = profiles[user.id]
             gear_names = gear_data.split(',') if gear_data else ["Rusty Dagger"]
             cls = CLASSES.get(class_name, CLASSES["Fighter"])
             passives = [cls['passive']] if cls['passive'] else []
@@ -303,6 +326,13 @@ class RPGSession(discord.ui.View):
                 total_int_bonus += g_item['int']
                 if "Jad" in g:
                     jad_pieces.add(g)
+
+            # Apply equipped lootbox/crafted gear bonuses (one per slot enforced by /equip)
+            for it in (equipped_items or []):
+                it_dict = dict(it)
+                total_atk_bonus += int(it_dict.get("atk_bonus") or 0)
+                total_def_bonus += int(it_dict.get("def_bonus") or 0)
+                total_int_bonus += int(it_dict.get("int_bonus") or 0)
             
             self.party[user.id] = {
                 "user": user, "class": class_name, "emoji": cls['emoji'],
@@ -329,7 +359,11 @@ class RPGSession(discord.ui.View):
         self.relics = [] 
         
         self.state = "EXPLORE"
-        self.log = "Your party enters the dungeon..."
+        theme_data = DUNGEON_THEMES.get(self.theme, {})
+        theme_emoji = theme_data.get("emoji", "🏰")
+        theme_gimmick = theme_data.get("gimmick", "")
+        gimmick_line = f"\n{theme_gimmick}" if theme_gimmick else ""
+        self.log = f"{theme_emoji} Your party enters the **{self.theme}**...{gimmick_line}"
         self.enemy = None
         self.treasure = None
         
@@ -345,9 +379,19 @@ class RPGSession(discord.ui.View):
         self.paths = []
         
         multiplier = 0.8 + (self.floor * 0.05) + ((self.floor ** 2) * 0.002)
+
+        theme_data = DUNGEON_THEMES.get(self.theme, {})
+        enemy_name_pool = set(theme_data.get("enemies") or [])
+        boss_name_pool = set(theme_data.get("bosses") or [])
+        themed_enemies = [e for e in ENEMIES if not enemy_name_pool or e["name"] in enemy_name_pool]
+        themed_bosses = [b for b in BOSSES if not boss_name_pool or b["name"] in boss_name_pool]
+        if not themed_enemies:
+            themed_enemies = ENEMIES
+        if not themed_bosses:
+            themed_bosses = BOSSES
         
         if self.floor > 0 and self.floor % 10 == 0:
-            base = random.choice(BOSSES)
+            base = random.choice(themed_bosses)
             party_size = len(self.party)
             enemy = {
                 "name": base['name'], "emoji": base['emoji'],
@@ -360,7 +404,7 @@ class RPGSession(discord.ui.View):
             self.paths.append({"type": "boss", "label": "Enter Boss Room", "emoji": "☠️", "data": enemy})
             return
 
-        base1 = random.choice(ENEMIES)
+        base1 = random.choice(themed_enemies)
         enemy1 = {
             "name": base1['name'], "emoji": base1['emoji'],
             "hp": int(base1['hp'] * multiplier * len(self.party)), 
@@ -379,7 +423,7 @@ class RPGSession(discord.ui.View):
         elif roll < 0.70: 
             self.paths.append({"type": "event", "label": "Strange Altar", "emoji": "🔮"})
         else: 
-            base2 = random.choice(ENEMIES)
+            base2 = random.choice(themed_enemies)
             enemy2 = {
                 "name": base2['name'], "emoji": base2['emoji'],
                 "hp": int(base2['hp'] * multiplier * len(self.party)), 
@@ -1082,7 +1126,8 @@ class RPGLobby(discord.ui.View):
         profiles = {}
         for user in self.party:
             gear_data, class_name = await db.get_rpg_profile(user.id)
-            profiles[user.id] = (gear_data, class_name)
+            equipped = await db.get_equipped_gear(user.id)
+            profiles[user.id] = (gear_data, class_name, equipped)
 
         for user in self.party:
             active_runs.add(user.id)
