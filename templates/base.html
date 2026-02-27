@@ -41,7 +41,7 @@
         nav {
             position: sticky;
             top: 0;
-            z-index: 100;
+            z-index: 1000;
             background: rgba(15, 23, 42, 0.95);
             backdrop-filter: blur(16px);
             border-bottom: 1px solid rgba(148, 163, 184, 0.12);
@@ -232,6 +232,7 @@
             }
             .nav-left {
                 gap: 12px;
+                flex-shrink: 0;
             }
             .logo { font-size: 1.1rem; letter-spacing: 0.08em; }
             .nav-toggle {
@@ -252,6 +253,7 @@
                 padding: 12px 0;
                 max-height: 70vh;
                 overflow-y: auto;
+                z-index: 1;
             }
             nav.nav-open .nav-links {
                 display: flex;
@@ -267,13 +269,25 @@
             .nav-links a.active { border-left-color: var(--accent-color); }
             .user-status {
                 gap: 8px;
+                min-width: 0;
+                flex: 1;
+                justify-content: flex-end;
             }
             .user-pill {
                 padding: 6px 10px;
                 font-size: 0.8rem;
+                min-width: 0;
+                max-width: 100%;
+                overflow: hidden;
             }
             .user-pill span:not(.separator):first-of-type {
-                max-width: 90px;
+                max-width: 70px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .user-pill #gold-counter {
+                max-width: 72px;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
