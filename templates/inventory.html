@@ -161,7 +161,12 @@
             <div class="page-title">My Inventory</div>
             <div class="page-subtitle">Manage your items, equip RPG gear, and list items on the night market.</div>
         </div>
-        <div class="pill">🎒 Storage</div>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <a href="/profile/{{ session['user_id'] }}" class="pill" style="cursor:pointer; text-decoration:none;">
+                📊 View RPG Stats
+            </a>
+            <div class="pill">🎒 Storage</div>
+        </div>
     </div>
 
     <div class="content-card">
