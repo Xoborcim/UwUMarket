@@ -205,6 +205,32 @@ def api_sell_item():
         
     return {"success": success, "message": msg}
 
+
+@app.route('/api/equip_item', methods=['POST'])
+def api_equip_item():
+    if 'user_id' not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    data = request.get_json() or {}
+    try:
+        item_id = int(data.get('item_id'))
+    except (TypeError, ValueError):
+        return {"success": False, "message": "Invalid item id."}, 400
+
+    success, msg = run_async(db.equip_inventory_item(session['user_id'], item_id))
+    return {"success": success, "message": msg}
+
+
+@app.route('/api/unequip_slot', methods=['POST'])
+def api_unequip_slot():
+    if 'user_id' not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    data = request.get_json() or {}
+    slot = (data.get('slot') or '').strip().lower()
+    if slot not in ('weapon', 'armor', 'mage'):
+        return {"success": False, "message": "Invalid slot."}, 400
+    success, msg = run_async(db.unequip_slot(session['user_id'], slot))
+    return {"success": success, "message": msg}
+
 @app.route('/api/scrap_item', methods=['POST'])
 def api_scrap_item():
     if 'user_id' not in session: return {"success": False, "message": "Not logged in"}, 401
