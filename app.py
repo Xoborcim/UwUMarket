@@ -4,6 +4,7 @@ import re
 import requests
 import aiosqlite
 import asyncio
+import datetime
 from flask import Flask, render_template, request, session, redirect, url_for, send_from_directory
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
@@ -58,6 +59,29 @@ NPCS_BY_PAGE = {
 def get_npcs_for_page(page_key):
     return NPCS_BY_PAGE.get(page_key, [])
 
+# --- ACHIEVEMENTS (id -> {name, desc, emoji}) ---
+ACHIEVEMENTS = {
+    "first_lootbox": {"name": "First Crate", "desc": "Open your first lootbox", "emoji": "📦"},
+    "floor_10": {"name": "Dungeon Diver", "desc": "Reach floor 10", "emoji": "⚔️"},
+    "earn_1m": {"name": "Millionaire", "desc": "Earn $1,000,000 total", "emoji": "💰"},
+    "donate_10k": {"name": "Guild Patron", "desc": "Donate $10,000 to the guild", "emoji": "🏛️"},
+    "sell_one": {"name": "Merchant", "desc": "Sell an item on the Bazaar", "emoji": "🛒"},
+}
+
+# --- DAILY QUESTS (id -> {name, desc, reward_gold, check: async (user_id) -> bool or sync) ---
+DAILY_QUESTS = [
+    {"id": "sell_one", "name": "List an item", "desc": "List 1 item on the Bazaar", "reward": 100.0},
+    {"id": "open_one", "name": "Crack a crate", "desc": "Open 1 lootbox", "reward": 50.0},
+    {"id": "donate", "name": "Support the guild", "desc": "Donate any amount to the Guild Hall", "reward": 75.0},
+    {"id": "dungeon_run", "name": "Brave the dungeon", "desc": "Complete a dungeon run (Discord)", "reward": 150.0},
+]
+
+# --- SET BONUSES (set_name -> {2: {atk: x}, 4: {def: x}, 6: {atk: x, def: x}}) ---
+SET_BONUSES = {
+    "RPG_Set_1": {2: {"atk": 2}, 4: {"def": 3}, 6: {"atk": 5, "def": 5}},
+    "Base_Set": {2: {"atk": 1}, 4: {"def": 2}},
+}
+
 # --- HELPER FUNCTIONS ---
 
 def run_async(coro):
@@ -87,6 +111,25 @@ def get_random_item(set_name, tier):
     return item_name, image_url
 
 # --- WEBSOCKET BROADCASTER ---
+
+def _inject_nav_rpg(context):
+    """Inject nav RPG class and emoji for logged-in user (for base template)."""
+    if "session" not in context or not context["session"].get("user_id"):
+        return {}
+    try:
+        from cogs.rpg import CLASSES
+        gear_data, class_name = run_async(db.get_rpg_profile(context["session"]["user_id"]))
+        cls = CLASSES.get(class_name, CLASSES["Fighter"])
+        return {"nav_rpg_class": class_name or "Fighter", "nav_class_emoji": cls.get("emoji", "⚔️")}
+    except Exception:
+        return {"nav_rpg_class": "Fighter", "nav_class_emoji": "⚔️"}
+
+@app.context_processor
+def inject_nav_context():
+    out = {}
+    if session.get("user_id"):
+        out.update(_inject_nav_rpg({"session": session}))
+    return out
 
 def broadcast_update(event_type, data):
     """Shouts an update to all connected users instantly."""
@@ -212,10 +255,9 @@ def profile(identifier):
 
     # Run the smart search
     player = run_async(get_user_smart(identifier))
-    
     if not player:
-        # Helpful error message to see what the server was looking for
         return f"<h1>404: Resident '{identifier}' not found in Polyville</h1>", 404
+    player = dict(player)
     
     # Fetch equipped RPG gear for this player
     equipped = run_async(db.get_equipped_gear(player['user_id']))
@@ -249,12 +291,44 @@ def profile(identifier):
         "intelligence": total_int_bonus + base_cls["spell_mod"],
     }
 
-    avatar_hash = player["avatar_hash"] if "avatar_hash" in player.keys() else None
-    avatar_url = None
-    if avatar_hash:
-        avatar_url = f"https://cdn.discordapp.com/avatars/{player['user_id']}/{avatar_hash}.png?size=256"
+    # Adventurer rank (MMO progression feel)
+    max_floor = int(player.get("max_floor") or 0)
+    if max_floor >= 40:
+        adventurer_rank = "Legend"
+    elif max_floor >= 25:
+        adventurer_rank = "Champion"
+    elif max_floor >= 10:
+        adventurer_rank = "Veteran"
+    elif max_floor > 0 or (class_name and class_name not in (None, "", "Unassigned")):
+        adventurer_rank = "Apprentice"
+    else:
+        adventurer_rank = "Novice"
+
+    # Unlock achievements by progress (profile load)
+    uid = player["user_id"]
+    if max_floor >= 10:
+        run_async(db.unlock_achievement(uid, "floor_10"))
+    if float(player.get("balance") or 0) >= 1_000_000:
+        run_async(db.unlock_achievement(uid, "earn_1m"))
     
-    # Render the page with the found player data, equipped gear, and derived stats
+    # Set bonuses from equipped gear (by set_name count)
+    from collections import Counter
+    set_counts = Counter(it.get("set_name") or "Base_Set" for it in equipped_list)
+    set_bonus_lines = []
+    for set_name, bonuses in SET_BONUSES.items():
+        n = set_counts.get(set_name, 0)
+        for pieces, stats in sorted(bonuses.items(), reverse=True):
+            if n >= pieces:
+                parts = [f"+{v} {k.upper()}" for k, v in stats.items()]
+                set_bonus_lines.append(f"{pieces}-piece {set_name}: {', '.join(parts)}")
+                break
+    
+    user_achievements = run_async(db.get_user_achievements(uid))
+    achievements_unlocked = [ACHIEVEMENTS.get(a["achievement_id"], {"name": a["achievement_id"], "desc": "", "emoji": "🏅"}) for a in user_achievements]
+    
+    avatar_hash = player.get("avatar_hash")
+    avatar_url = f"https://cdn.discordapp.com/avatars/{player['user_id']}/{avatar_hash}.png?size=256" if avatar_hash else None
+    
     class_emoji = base_cls.get("emoji", "⚔️")
     return render_template(
         'profile.html',
@@ -263,6 +337,9 @@ def profile(identifier):
         rpg_stats=rpg_stats,
         avatar_url=avatar_url,
         class_emoji=class_emoji,
+        adventurer_rank=adventurer_rank,
+        achievements_unlocked=achievements_unlocked,
+        set_bonus_lines=set_bonus_lines,
         active_page="profile",
     )
 
@@ -270,6 +347,12 @@ def profile(identifier):
 
 @app.route('/market')
 def market():
+    login_streak_reward = None
+    login_streak = 0
+    if session.get("user_id"):
+        login_streak, reward = run_async(db.record_login_streak(session["user_id"]))
+        if reward > 0:
+            login_streak_reward = reward
     # 1. Check if the user is logged in
     if 'user_id' not in session:
         # We pass a message so the user knows why they were redirected
@@ -280,6 +363,8 @@ def market():
             success=False,
             active_page="market",
             npcs=get_npcs_for_page("market"),
+            login_streak=0,
+            login_streak_reward=None,
         )
 
     # 2. If they are logged in, proceed as normal
@@ -315,7 +400,7 @@ def buy_item(item_id):
         # Notify browsers to remove the item from their lists without refreshing
         broadcast_update('item_sold', {'item_id': item_id, 'buyer': session['username']})
         
-    return render_template('market.html', items=run_async(get_market_listings()), message=message, success=success, active_page="market", npcs=get_npcs_for_page("market"))
+    return render_template('market.html', items=run_async(get_market_listings()), message=message, success=success, active_page="market", npcs=get_npcs_for_page("market"), login_streak=0, login_streak_reward=None)
 
 # --- INVENTORY ROUTES ---
 
@@ -353,9 +438,9 @@ def api_sell_item():
     success, msg = run_async(db.list_item_on_market(session['user_id'], data.get('item_id'), price))
     
     if success:
-        # Shout that a new item is available!
         broadcast_update('new_listing', {'item_id': data.get('item_id'), 'price': price})
-        
+        run_async(db.unlock_achievement(session["user_id"], "sell_one"))
+        run_async(db.set_quest_completed(session["user_id"], "sell_one", datetime.date.today().isoformat()))
     return {"success": success, "message": msg}
 
 
@@ -483,6 +568,8 @@ def api_open_box():
         items.append(item_dict)
         if item_dict["tier"] in ["Epic", "Legendary", "Mythic"]:
             broadcast_update('big_pull', {'username': session['username'], 'item': item_dict['name'], 'tier': item_dict['tier']})
+        run_async(db.unlock_achievement(user_id, "first_lootbox"))
+        run_async(db.set_quest_completed(user_id, "open_one", datetime.date.today().isoformat()))
 
     return {
         "success": True,
@@ -493,11 +580,40 @@ def api_open_box():
 
 # --- TOWN HALL ROUTES ---
 
+def _guild_progress(town):
+    """Return (progress_0_to_100, next_level_gold) for guild level bar. Purely cosmetic next-level goal."""
+    level = int(town.get("level") or 1)
+    treasury = float(town.get("treasury") or 0)
+    next_gold = (level ** 2) * 15000  # e.g. L2=60k, L3=135k
+    progress = min(100.0, 100.0 * treasury / next_gold) if next_gold else 0
+    return round(progress, 1), next_gold
+
 @app.route('/town')
 def town_hall():
     town = run_async(db.get_town_state())
     if not town: town = {'level': 1, 'treasury': 0.0, 'food': 0, 'tax_rate': 0.05, 'famine': 0, 'user_count': 1}
-    return render_template('town.html', town=town, active_page="town", npcs=get_npcs_for_page("town"))
+    town = dict(town)
+    town["guild_progress_pct"], town["guild_next_level_gold"] = _guild_progress(town)
+    world_boss = run_async(db.get_world_boss()) or {"current_hp": 10000.0, "max_hp": 10000.0}
+    return render_template('town.html', town=town, world_boss=world_boss, active_page="town", npcs=get_npcs_for_page("town"))
+
+@app.route("/api/world_boss/damage", methods=["POST"])
+def api_world_boss_damage():
+    if "user_id" not in session:
+        return {"success": False, "error": "Not logged in"}, 401
+    data = request.get_json() or {}
+    try:
+        gold = float(data.get("gold", 0))
+    except Exception:
+        return {"success": False, "error": "Invalid amount."}, 400
+    if gold < 100:
+        return {"success": False, "error": "Minimum $100 per attack (10 damage)."}
+    damage = gold / 10.0
+    user_id = session["user_id"]
+    if not run_async(db.update_balance(user_id, -gold)):
+        return {"success": False, "error": "Insufficient funds."}
+    new_hp = run_async(db.deal_world_boss_damage(damage))
+    return {"success": True, "new_hp": new_hp, "damage": damage}
 
 @app.route('/api/donate', methods=['POST'])
 def api_donate():
@@ -518,7 +634,12 @@ def api_donate():
                 await db_conn.execute("UPDATE town SET treasury = COALESCE(treasury, 0.0) + ? WHERE id=1", (amt,))
                 await db_conn.commit()
         run_async(donate_gold_db(amount))
+        run_async(db.record_donation(user_id, amount))
         broadcast_update('town_update', {'message': f"{session['username']} donated ${amount:,.2f}!"})
+        total_d = run_async(db.get_user_total_donated(user_id))
+        if total_d and total_d >= 10000:
+            run_async(db.unlock_achievement(user_id, "donate_10k"))
+        run_async(db.set_quest_completed(user_id, "donate", datetime.date.today().isoformat()))
         return {"success": True, "message": f"Donated ${amount:,.2f} to the Town Treasury!"}
         
     elif data.get('type') == 'food':
@@ -591,10 +712,28 @@ def rpg_stats_page():
             ) as c:
                 classes = await c.fetchall()
 
-        return overall, classes
+            async with db_conn.execute(
+                """
+                SELECT user_id, username, max_floor, COALESCE(rpg_class, 'Fighter') AS rpg_class
+                FROM users
+                WHERE username IS NOT NULL AND max_floor > 0
+                ORDER BY max_floor DESC
+                LIMIT 3
+                """
+            ) as c:
+                hall_of_legends = await c.fetchall()
 
-    overall, classes = run_async(get_rpg_stats())
-    return render_template('rpg_stats.html', overall=overall, classes=classes, active_page="rpg_stats")
+        return overall, classes, hall_of_legends
+
+    overall, classes, hall_of_legends = run_async(get_rpg_stats())
+    from cogs.rpg import CLASSES
+    legends_with_emoji = []
+    for row in hall_of_legends:
+        r = dict(row)
+        cls = CLASSES.get(r.get("rpg_class"), CLASSES["Fighter"])
+        r["class_emoji"] = cls.get("emoji", "⚔️")
+        legends_with_emoji.append(r)
+    return render_template('rpg_stats.html', overall=overall, classes=classes, hall_of_legends=legends_with_emoji, active_page="rpg_stats")
 
 @app.route('/api/buy_shares', methods=['POST'])
 def api_buy_shares():
@@ -615,6 +754,48 @@ def api_buy_shares():
     return {"success": success, "message": msg}
 
 # --- LEADERBOARD ROUTES ---
+
+@app.route('/quests')
+def quests_page():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    today = datetime.date.today().isoformat()
+    progress_list = run_async(db.get_daily_quest_progress_for_date(session["user_id"], today))
+    progress_by_id = {p["quest_id"]: p for p in progress_list}
+    quests_with_status = []
+    for q in DAILY_QUESTS:
+        pid = q["id"]
+        prog = progress_by_id.get(pid, {"completed": 0, "claimed": 0})
+        quests_with_status.append({
+            **q,
+            "completed": bool(prog.get("completed")),
+            "claimed": bool(prog.get("claimed")),
+        })
+    return render_template("quests.html", quests=quests_with_status, active_page="quests")
+
+@app.route("/api/quests/claim", methods=["POST"])
+def api_quests_claim():
+    if "user_id" not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    data = request.get_json() or {}
+    quest_id = (data.get("quest_id") or "").strip()
+    if not quest_id or not any(q["id"] == quest_id for q in DAILY_QUESTS):
+        return {"success": False, "message": "Invalid quest."}, 400
+    today = datetime.date.today().isoformat()
+    reward = next((q["reward"] for q in DAILY_QUESTS if q["id"] == quest_id), 0.0)
+    ok = run_async(db.claim_quest_reward(session["user_id"], quest_id, today, reward))
+    if not ok:
+        return {"success": False, "message": "Complete the quest first or already claimed."}
+    return {"success": True, "reward": reward}
+
+@app.route("/api/quests/complete_dungeon", methods=["POST"])
+def api_quests_complete_dungeon():
+    """Honor system: mark 'dungeon_run' daily quest as complete (e.g. after a Discord run)."""
+    if "user_id" not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    today = datetime.date.today().isoformat()
+    run_async(db.set_quest_completed(session["user_id"], "dungeon_run", today))
+    return {"success": True}
 
 @app.route('/leaderboard')
 def leaderboard():
@@ -654,11 +835,14 @@ def leaderboard():
         return richest, strongest, collectors
 
     richest, strongest, collectors = run_async(get_leaders())
+    top_donors = run_async(db.get_top_donors(10))
+    top_donors = [dict(d) for d in top_donors]
     
     return render_template('leaderboard.html',
                            richest=richest,
                            strongest=strongest,
                            collectors=collectors,
+                           top_donors=top_donors,
                            active_page="leaderboard")
 
 # --- CASINO (mirrors cogs/casino.py logic for web) ---

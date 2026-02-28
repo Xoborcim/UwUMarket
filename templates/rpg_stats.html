@@ -62,13 +62,29 @@
     <div class="page-header">
         <div>
             <div class="page-title">Realm Stats</div>
-            <div class="page-subtitle">Adventurers, class performance, and how deep the realm has been pushed.</div>
+            <div class="page-subtitle">The realm's finest push deeper every day. Adventurers, class performance, and how deep the realm has been pushed.</div>
         </div>
         <div class="pill">⚔️ RPG Stats</div>
     </div>
 
     <div class="content-card">
         <div class="rpg-stats-container">
+            {% if hall_of_legends %}
+            <div class="rpg-card" style="text-align: left; margin-bottom: 20px;">
+                <div class="rpg-label">Hall of Legends</div>
+                <p class="rpg-sub" style="margin-bottom: 10px;">Top climbers by dungeon floor</p>
+                <ul style="list-style: none; padding: 0; margin: 0;">
+                    {% for leg in hall_of_legends %}
+                    <li style="padding: 8px 0; border-bottom: 1px solid #1f2937; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: 800; color: var(--text-muted);">#{{ loop.index }}</span>
+                        <span style="font-size: 1.2rem;">{{ leg.class_emoji }}</span>
+                        <a href="/profile/{{ leg.username or leg.user_id }}" style="color: var(--accent-color); font-weight: 600; text-decoration: none;">{{ leg.username or ('User ' ~ leg.user_id) }}</a>
+                        <span style="margin-left: auto; font-weight: 700;">Floor {{ leg.max_floor }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
             <div class="rpg-grid">
                 <div class="rpg-card">
                     <div class="rpg-label">Total Adventurers</div>

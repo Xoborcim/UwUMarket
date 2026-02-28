@@ -15,68 +15,74 @@ Click any NPC to open a dialogue modal; some have an action button (e.g. "Open I
 
 ---
 
-## Quick wins (theming & copy)
+## ✅ Done: Guild (Town as Your Guild)
 
-- **Rename UI labels** to fantasy terms:
-  - "Market" → **"Bazaar"** or "Trading Post"
-  - "Citizen Profile" → **"Adventurer Profile"** or "Character Sheet"
-  - "Net Worth" → **"Gold Purse"** or "Treasury"
-  - "Town Hall" → **"Guild Hall"** or "Council"
-  - Lootbox: "Open Box" → **"Unlock Crate"** / "Crack Open"
-  - Casino → **"Tavern Games"** or "Gambling Den" (with one-line flavor text)
-- **Tagline** in nav or footer: e.g. *"Trade, dungeon, thrive."* or *"City of Adventurers"*
-- **Profile**: Show class emoji next to class name (e.g. **Fighter**), and a short line like *"Ready for the dungeon"* when they have a class set.
+- **Town Hall** is framed as **Your Guild — Polyville**. Guild level and population are shown; a **progress bar** shows treasury progress toward the next guild level (cosmetic goal). Tagline: *"Your contributions strengthen the realm."*
+
+## ✅ Done: Adventurer rank & character sheet
+
+- **Profile** shows an **Adventurer rank** under the name: Novice → Apprentice → Veteran → Champion → Legend (based on class and dungeon max floor).
+- Stats are grouped into **Combat** (HP, ATK, DEF, INT), **World** (Gold Purse, RPG Class, Max Floor, Guild Job), and **Equipment** (Active Armory). "Town Job" was renamed to "Guild Job".
+
+## ✅ Done: Leaderboard RPG labels
+
+- **Hall of Fame** subtitle and section titles use adventurer/dungeon wording: "Richest Adventurers", "By Dungeon Floor", and the subtitle mentions dungeon floor and collectors.
+
+---
+
+## ✅ Done: Theming & copy
+
+- Nav: **Bazaar**, **Guild Hall**, **Tavern Games**; class + gold in nav (class hidden on small mobile).
+- Profile: **Adventurer Profile**, **Gold Purse**, class emoji, *"Ready for the dungeon"* when class set.
+- Footer lore: *"Polyville — a city of adventurers. Trade at the Bazaar, brave the dungeons in Discord, and grow your legend."*
+- Inventory: **List for gold** button and **List for Gold** modal.
 
 ---
 
 ## Website: character sheet feel
 
-- **Profile as character sheet**: Group stats into blocks — "Combat" (HP, ATK, DEF, INT), "World" (Gold, Job, Max Floor), "Equipment" (current armory). Optional: tabs for Stats / Gear / Achievements.
-- **RPG Stats page**: Add a line like *"The realm's finest push deeper every day."* and maybe a "Hall of Legends" subsection for top 3 by max floor (with class emoji).
-- **Leaderboard**: Add a second view or filter: "By Dungeon Floor" so it feels like an adventurer ranking, not just wealth.
+- ~~**Profile as character sheet**~~ **Done.** Combat / World / Equipment blocks; Adventurer rank; set bonuses; last dungeon run; achievements.
+- ~~**RPG Stats page**~~ **Done.** Tagline *"The realm's finest push deeper every day"* and **Hall of Legends** (top 3 by floor with class emoji).
+- ~~**Leaderboard**~~ **Done.** Richest Adventurers, By Dungeon Floor, Master Collectors, **Top Donors to the Guild**.
 
 ---
 
 ## Progression & identity
 
-- **Adventurer rank / title**: A simple title derived from progress, e.g. "Novice" (no class), "Apprentice" (class set), "Veteran" (Floor 10+), "Champion" (Floor 25+), "Legend" (top 5 max floor). Show on profile and optionally in nav next to username.
-- **Class on the website**: You already show RPG class on profile; consider showing it in the **nav** for the logged-in user (e.g. next to gold: "Fighter | $1,234") so the site feels tied to the Discord RPG identity.
-- **Daily login / streak**: Small gold or "reputation" reward for visiting the site or using the bot daily (classic MMO retention).
+- ~~**Adventurer rank / title**~~ **Done.** Novice → Apprentice → Veteran → Champion → Legend on profile.
+- ~~**Class in nav**~~ **Done.** Nav shows class emoji + name next to gold for logged-in user.
+- ~~**Daily login / streak**~~ **Done.** Visiting the Bazaar (market) records streak; first login of the day gets gold (scales with streak, cap 200). Banner on market when reward given.
 
 ---
 
 ## Quests & goals
 
-- **Daily quests (website or bot)**:
-  - "Sell 1 item on the Bazaar" → small gold reward
-  - "Open 1 lootbox" or "Donate to the Guild Hall"
-  - "Complete a dungeon run" (track via existing RPG analytics)
-  - Show on a "Quests" or "Contracts" page; complete = one-time reward and checkmark.
-- **Achievements / badges**: Unlockable titles or icons — "First Lootbox", "Reach Floor 10", "Earn $1M", "Donate 10k to Town". Display on profile and optionally in leaderboard.
+- ~~**Daily quests**~~ **Done.** **Quests** page: List an item ($100), Crack a crate ($50), Support the guild ($75), Brave the dungeon ($150). Completing an action marks the quest; user claims reward. Dungeon can be marked complete via **/api/quests/complete_dungeon** (honor system or call from Discord bot).
+- ~~**Achievements**~~ **Done.** First Crate, Dungeon Diver (floor 10), Millionaire ($1M), Guild Patron (donate $10k), Merchant (sell one). Unlock on actions and profile load; shown on profile.
 
 ---
 
 ## World & community
 
-- **Guild / Town as faction**: You already have town level, treasury, food. Surface it as "Your Guild" with a progress bar, level, and a line like *"Your contributions strengthen the realm."* Link from Town Hall and profile.
-- **Global / server leaderboards**: You have leaderboard; add or highlight "Top by Dungeon Floor" and "Top Donors to the Guild" so it feels like a living world.
-- **Lore blurb**: One short paragraph on the homepage or an "About" section: e.g. *"Polyville is a city of adventurers. Trade at the Bazaar, brave the dungeons in Discord, and grow your legend."*
+- ~~**Guild / Town as faction**~~ **Done.** Town is "Your Guild" with progress bar and tagline.
+- ~~**Leaderboard**~~ **Done.** Richest, By Dungeon Floor, Collectors, **Top Donors to the Guild** (total_donated_gold tracked).
+- ~~**Lore blurb**~~ **Done.** Footer: *"Polyville — a city of adventurers. Trade at the Bazaar, brave the dungeons in Discord, and grow your legend."*
 
 ---
 
 ## Economy & items
 
-- **Set bonuses**: When a player equips 2/4/6 items from the same set (e.g. RPG_Set_1), show a small bonus on profile (e.g. "+5 ATK for 2-piece"). Requires defining set bonuses in meta or DB.
-- **"List for gold"** instead of "Sell" on market to keep the fantasy tone.
+- ~~**Set bonuses**~~ **Done.** Profile shows set bonuses from equipped gear (e.g. RPG_Set_1: 2-piece +2 ATK, 4-piece +3 DEF, 6-piece +5 ATK/DEF). Defined in app `SET_BONUSES`.
+- ~~**"List for gold"**~~ **Done.** Inventory button and modal.
 - **Lootbox sets**: More sets that are explicitly "adventurer gear" with clear tier names (e.g. "Scout", "Knight", "Archmage") reinforce the RPG feel.
 
 ---
 
 ## Optional larger features
 
-- **Stamina / energy**: Limit dungeon runs or lootbox opens per day (e.g. 5 runs, 20 crates) to create scarcity and "come back tomorrow" — can feel bad if too strict.
-- **World boss**: A server-wide health bar that everyone damages (e.g. via dungeon runs or a dedicated command); rewards at milestones. High effort but very MMO-like.
-- **Discord ↔ Web link**: Already same account; show "Last dungeon: Floor 12" or "Last run: 2h ago" on profile by reading from `rpg_analytics` or a last_run timestamp.
+- **Stamina / energy**: Not implemented (can limit runs/crates per day if desired).
+- ~~**World boss**~~ **Done (minimal).** Guild Hall shows **World Boss** HP bar. Spend gold to deal damage ($100 = 10 damage). When HP hits 0, boss respawns at full HP. Discord bot can call same DB to deal damage on dungeon run completion.
+- ~~**Last dungeon run**~~ **Done.** Profile shows "Last Dungeon Run: Floor X — timestamp" when `last_rpg_run_floor` / `last_rpg_run_at` are set (updated by Discord bot in `log_rpg_run`).
 
 ---
 

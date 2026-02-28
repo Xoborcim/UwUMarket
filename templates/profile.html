@@ -56,6 +56,16 @@
         .stat-class {
             color: #38bdf8;
         }
+        .stats-section { margin-top: 24px; }
+        .stats-section-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+            padding-bottom: 6px;
+        }
         .gear-box {
             margin-top: 24px;
             background: rgba(8, 14, 36, 0.95);
@@ -89,46 +99,86 @@
                 <h1 class="profile-name">
                     {{ player['username'] or 'Citizen ' ~ player['user_id'] }}
                 </h1>
+                <p class="profile-rank" style="margin: 6px 0 0 0; font-size: 0.85rem; font-weight: 700; color: var(--accent-color);">
+                    {{ adventurer_rank|default('Novice') }} Adventurer
+                </p>
+                {% if player.get('rpg_class') and player['rpg_class'] not in (None, '', 'Unassigned') %}
+                <p class="profile-ready" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Ready for the dungeon.</p>
+                {% endif %}
                 <p class="discord-id">
                     Discord ID: {{ player['user_id'] }}
                 </p>
             </div>
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Gold Purse</div>
-                    <div class="stat-value stat-gold">${{ "{:,.2f}".format(player['balance'] or 0) }}</div>
+            <div class="stats-section">
+                <h3 class="stats-section-title">Combat</h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Dungeon HP</div>
+                        <div class="stat-value">{{ rpg_stats.hp }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Attack</div>
+                        <div class="stat-value">{{ rpg_stats.atk }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Defense</div>
+                        <div class="stat-value">{{ rpg_stats.defense }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Intelligence</div>
+                        <div class="stat-value">{{ rpg_stats.intelligence }}</div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">RPG Class</div>
-                    <div class="stat-value stat-class">{{ class_emoji|default('⚔️') }} {{ player['rpg_class'] or 'Fighter' }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Dungeon Max Floor</div>
-                    <div class="stat-value">Floor {{ player['max_floor'] or 0 }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Town Job</div>
-                    <div class="stat-value">{{ player['job'] or 'Unemployed' }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Dungeon HP</div>
-                    <div class="stat-value">{{ rpg_stats.hp }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Attack</div>
-                    <div class="stat-value">{{ rpg_stats.atk }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Defense</div>
-                    <div class="stat-value">{{ rpg_stats.defense }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Intelligence</div>
-                    <div class="stat-value">{{ rpg_stats.intelligence }}</div>
+            </div>
+            <div class="stats-section">
+                <h3 class="stats-section-title">World</h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Gold Purse</div>
+                        <div class="stat-value stat-gold">${{ "{:,.2f}".format(player['balance'] or 0) }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">RPG Class</div>
+                        <div class="stat-value stat-class">{{ class_emoji|default('⚔️') }} {{ player['rpg_class'] or 'Fighter' }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Dungeon Max Floor</div>
+                        <div class="stat-value">Floor {{ player['max_floor'] or 0 }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Guild Job</div>
+                        <div class="stat-value">{{ player['job'] or 'Unemployed' }}</div>
+                    </div>
                 </div>
             </div>
 
+            {% if set_bonus_lines %}
+            <div class="gear-box" style="margin-top: 20px;">
+                <h3 style="margin-top: 0; color: var(--accent-color);">✨ Set Bonuses</h3>
+                <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-muted); line-height: 1.8;">
+                    {% for line in set_bonus_lines %}
+                    <li>{{ line }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            {% if player.get('last_rpg_run_at') %}
+            <div class="gear-box" style="margin-top: 20px;">
+                <h3 style="margin-top: 0; color: var(--text-muted);">📅 Last Dungeon Run</h3>
+                <p style="margin: 0; color: var(--text-muted);">Floor {{ player.get('last_rpg_run_floor', 0) }} — {{ (player.get('last_rpg_run_at') or '')[:16] }}</p>
+            </div>
+            {% endif %}
+            {% if achievements_unlocked %}
+            <div class="gear-box" style="margin-top: 20px;">
+                <h3 style="margin-top: 0; color: var(--accent-color);">🏅 Achievements</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                    {% for a in achievements_unlocked %}
+                    <span style="background: rgba(31, 41, 55, 0.9); padding: 6px 12px; border-radius: 999px; font-size: 0.85rem;" title="{{ a.desc }}">{{ a.emoji }} {{ a.name }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
             <div class="gear-box">
                 <h3 style="margin-top: 0; color: var(--accent-color);">🛡️ Active Armory</h3>
                 {% if equipped_gear %}
