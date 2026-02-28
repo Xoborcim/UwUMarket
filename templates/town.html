@@ -213,6 +213,31 @@
                     <div class="stat-label">Income Tax Rate</div>
                     <div class="stat-value">{{ (town['tax_rate'] * 100) | int }}%</div>
                 </div>
+                {% if realm_prosperity %}
+                <div class="stat-card">
+                    <div class="stat-label">Realm Prosperity</div>
+                    <div class="stat-value" style="font-size: 1.1rem;">{{ realm_prosperity.label }}</div>
+                    <div class="stat-label" style="margin-top: 6px; font-size: 0.75rem;">{{ realm_prosperity.flavor }}</div>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if rumors %}
+            <div class="action-box rumor-box" style="margin-top: 18px;">
+                <h3 style="margin-top:0;">📜 Notice Board</h3>
+                <ul class="rumor-list">
+                    {% for rumor in rumors %}
+                    <li>{{ rumor }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <div class="action-box world-action" style="margin-top: 18px;">
+                <h3 style="margin-top:0;">🍺 Rest at the Inn</h3>
+                <p style="color: var(--text-muted); margin-bottom: 12px;">Take a moment before your next adventure.</p>
+                <button type="button" class="donate-btn" id="rest-at-inn-btn" style="background: #78716c;">Rest</button>
+                <p id="rest-at-inn-msg" style="margin-top: 10px; min-height: 1.4em; color: var(--text-muted); font-style: italic;"></p>
             </div>
 
             <div class="action-box" style="margin-top: 20px;">
@@ -273,6 +298,23 @@
         }
         fetchLiveGold();
         setInterval(fetchLiveGold, 10000);
+
+        document.getElementById('rest-at-inn-btn')?.addEventListener('click', async function() {
+            const btn = this;
+            const msgEl = document.getElementById('rest-at-inn-msg');
+            msgEl.textContent = '';
+            btn.disabled = true;
+            try {
+                const r = await fetch('/api/rest_at_inn', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                const data = await r.json();
+                if (data.success) {
+                    msgEl.textContent = '"' + data.message + '"';
+                }
+            } catch (e) {
+                msgEl.textContent = 'Something went wrong.';
+            }
+            btn.disabled = false;
+        });
 
         const maxBossHp = {{ world_boss.max_hp or 10000 }};
         document.getElementById('boss-attack-btn')?.addEventListener('click', async function() {

@@ -202,6 +202,14 @@
             color: var(--text-muted);
             font-size: 0.95rem;
         }
+        .location-flavor {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin: -8px 0 20px 0;
+            line-height: 1.5;
+            max-width: 56ch;
+        }
+        .location-flavor strong { color: var(--accent-color); font-weight: 600; }
 
         .pill {
             display: inline-flex;
@@ -428,6 +436,9 @@
     </nav>
 
     <div class="page-shell">
+        {% if location_name and location_flavor %}
+        <p class="location-flavor">You are in <strong>{{ location_name }}</strong>. {{ location_flavor }}</p>
+        {% endif %}
         {% block content %}{% endblock %}
     </div>
 

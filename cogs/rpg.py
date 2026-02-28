@@ -140,8 +140,8 @@ DUNGEON_THEMES = {
 ITEMS = [
     {"name": "Bandage", "type": "heal", "val": 25, "emoji": "🩹", "desc": "Restores 25 HP", "min_floor": 1},
     {"name": "Health Potion", "type": "heal", "val": 50, "emoji": "🧪", "desc": "Restores 50 HP", "min_floor": 1},
-    {"name": "Bag of Coins", "type": "gold", "val": 75, "emoji": "🪙", "desc": "Adds $75 to your run", "min_floor": 1},
-    {"name": "Golden Relic", "type": "gold", "val": 200, "emoji": "🏆", "desc": "Adds $200 to your run", "min_floor": 1},
+    {"name": "Bag of Coins", "type": "gold", "val": 30, "emoji": "🪙", "desc": "Adds $30 to your run", "min_floor": 1},
+    {"name": "Golden Relic", "type": "gold", "val": 80, "emoji": "🏆", "desc": "Adds $80 to your run", "min_floor": 1},
     {"name": "Iron Buckler", "type": "stat", "target": "def", "val": 4, "emoji": "🛡️", "desc": "+4 Defense", "min_floor": 1},
     {"name": "Titanium Broadsword", "type": "stat", "target": "atk", "val": 12, "emoji": "⚔️", "desc": "+12 Attack", "min_floor": 1},
     {"name": "Apprentice Wand", "type": "stat", "target": "intelligence", "val": 1, "emoji": "🪄", "desc": "+1 Spell Knowledge", "min_floor": 1},
@@ -151,7 +151,7 @@ ITEMS = [
     {"name": "Enchanted Robes", "type": "stat", "target": "def", "val": 12, "emoji": "🥻", "desc": "+12 Defense", "min_floor": 10},
     {"name": "Mystic Amulet", "type": "stat", "target": "intelligence", "val": 2, "emoji": "📿", "desc": "+2 Spell Knowledge", "min_floor": 10},
     {"name": "Greater Health Potion", "type": "heal", "val": 100, "emoji": "🧪", "desc": "Restores 100 HP", "min_floor": 10},
-    {"name": "Ruby Necklace", "type": "gold", "val": 400, "emoji": "📿", "desc": "Adds $400 to your run", "min_floor": 10},
+    {"name": "Ruby Necklace", "type": "gold", "val": 160, "emoji": "📿", "desc": "Adds $160 to your run", "min_floor": 10},
     {"name": "Elise's Venom", "type": "spell", "effect": "poison", "emoji": "🕷️", "desc": "Equip Spell: Poison enemy.", "min_floor": 10},
     {"name": "Scroll of Hellfire", "type": "spell", "effect": "hellfire", "emoji": "🔥", "desc": "Equip Spell: Heavy Fire DMG.", "min_floor": 10},
     {"name": "Scroll of Frostbite", "type": "spell", "effect": "frostbite", "emoji": "❄️", "desc": "Equip Spell: Freeze enemy.", "min_floor": 10},
@@ -163,7 +163,7 @@ ITEMS = [
     {"name": "Aegis Plate Armor", "type": "stat", "target": "def", "val": 18, "emoji": "🛡️", "desc": "+18 Defense", "min_floor": 20},
     {"name": "Sapphire Wand", "type": "stat", "target": "intelligence", "val": 6, "emoji": "🪄", "desc": "+6 Spell Knowledge", "min_floor": 20},
     {"name": "Elixir of Life", "type": "heal", "val": 150, "emoji": "🍾", "desc": "Restores 150 HP", "min_floor": 20},
-    {"name": "Diamond Cluster", "type": "gold", "val": 600, "emoji": "💎", "desc": "Adds $600 to your run", "min_floor": 20},
+    {"name": "Diamond Cluster", "type": "gold", "val": 240, "emoji": "💎", "desc": "Adds $240 to your run", "min_floor": 20},
     {"name": "Scroll of Restoration", "type": "spell", "effect": "party_heal", "emoji": "📖", "desc": "Equip Spell: Party Heal.", "min_floor": 20},
     
     {"name": "Excalibur", "type": "stat", "target": "atk", "val": 45, "emoji": "⚔️", "desc": "+45 Attack", "min_floor": 30},
@@ -175,7 +175,7 @@ ITEMS = [
     {"name": "Jad's Almighty Hoof", "type": "stat", "target": "atk", "val": 85, "emoji": "🐴", "desc": "+85 Attack", "min_floor": 45},
     {"name": "Jad's Saddle of Invincibility", "type": "stat", "target": "def", "val": 50, "emoji": "🐎", "desc": "+50 Defense", "min_floor": 45},
     {"name": "Jad's Golden Carrot", "type": "heal", "val": 9999, "emoji": "🥕", "desc": "Fully Restores HP", "min_floor": 45},
-    {"name": "Jad's Secret Stash", "type": "gold", "val": 5000, "emoji": "💰", "desc": "Adds $5,000 to your run", "min_floor": 45}
+    {"name": "Jad's Secret Stash", "type": "gold", "val": 2000, "emoji": "💰", "desc": "Adds $2,000 to your run", "min_floor": 45}
 ]
 
 active_runs = set()
@@ -1077,14 +1077,13 @@ class RPGSession(discord.ui.View):
 
     async def _process_enemy_death(self, interaction):
         stat_value = (self.enemy['max_hp'] * 0.8) + (self.enemy['atk'] * 4) + (self.enemy['def'] * 4)
-        reward = int(stat_value + (self.floor * 10))
+        reward = int((stat_value + (self.floor * 10)) * 0.4)
         if self.enemy.get('boss'):
-            reward = int(reward * 2.5)
+            reward = int(reward * 2.0)
         if self.enemy.get('elite'):
-            reward = int(reward * 1.35)
-            
+            reward = int(reward * 1.2)
         if 'golden_idol' in self.relics:
-            reward = int(reward * 1.5)
+            reward = int(reward * 1.25)
         self.gold_earned += reward
         self.log += f"\n💥 ENEMY DEFEATED! Party found ${reward}!\n"
 
