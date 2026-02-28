@@ -742,6 +742,29 @@ async def get_economy_multiplier():
             row = await c.fetchone()
         return float(row['value']) if row and row['value'] is not None else ECONOMY_MULTIPLIER_DEFAULT
 
+async def gross_for_desired_net(desired_net):
+    """Returns the gross amount to pass to process_town_payout so the player receives desired_net (before rounding).
+     Use this for casino payouts so that e.g. 1.2x multiplier actually gives the player 1.2x their bet."""
+    if desired_net <= 0:
+        return 0.0
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT value FROM system_globals WHERE key = 'economy_multiplier'") as c:
+            row = await c.fetchone()
+        economy_mult = float(row['value']) if row and row['value'] is not None else ECONOMY_MULTIPLIER_DEFAULT
+        async with db.execute("SELECT level, tax_rate, famine FROM town WHERE id=1") as cursor:
+            town = await cursor.fetchone()
+        level = town['level'] if town and town['level'] else 1
+        tax_rate = town['tax_rate'] if town and town['tax_rate'] is not None else 0.10
+        famine = town['famine'] if town and town['famine'] else 0
+        level_mult = 1.0 + (level * 0.03)
+        if famine == 1:
+            level_mult *= 0.5
+        factor = economy_mult * level_mult * (1 - tax_rate)
+        if factor <= 0:
+            return desired_net
+        return desired_net / factor
+
 async def process_town_payout(user_id, amount):
     """MASTER FUNCTION: Applies economy scale, town multipliers, famines, and taxes to new currency generation."""
     if amount <= 0: return 0.0, 0.0

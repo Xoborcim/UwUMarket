@@ -133,7 +133,8 @@ class MultiplayerPokerGame(discord.ui.View):
     async def check_advance(self, interaction):
         if len(self.active_players) == 1:
             winner_id = self.active_players[0]
-            net, tax = await db.process_town_payout(winner_id, self.pot)
+            gross = await db.gross_for_desired_net(self.pot)
+            net, tax = await db.process_town_payout(winner_id, gross)
             winner = next(p for p in self.players if p.id == winner_id)
             self.log = f"Everyone else folded!\n{winner.display_name} wins **${net:,.2f}** (Town Tax: ${tax:,.2f})!"
             self.stage = 5
@@ -168,7 +169,8 @@ class MultiplayerPokerGame(discord.ui.View):
                     if score > best_score:
                         best_score, winner_id, hand_name = score, uid, h_name
 
-                net, tax = await db.process_town_payout(winner_id, self.pot)
+                gross = await db.gross_for_desired_net(self.pot)
+                net, tax = await db.process_town_payout(winner_id, gross)
                 winner = next(p for p in self.players if p.id == winner_id)
                 self.log = f"SHOWDOWN!\n{winner.display_name} wins **${net:,.2f}** with a {hand_name}!\n(Town Tax: ${tax:,.2f})"
                 self.stage = 5
@@ -329,7 +331,9 @@ class AdvancedBlackjackGame(discord.ui.View):
                 await db.update_balance(self.user.id, self.bets[0]) # Refunds don't get taxed
             else:
                 self.statuses[0] = "Blackjack"
-                net, tax = await db.process_town_payout(self.user.id, self.bets[0] * 2.5) 
+                desired = self.bets[0] * 2.5
+                gross = await db.gross_for_desired_net(desired)
+                net, tax = await db.process_town_payout(self.user.id, gross)
                 self.net_payouts[0] = net
                 self.taxes[0] = tax
                 
@@ -420,7 +424,9 @@ class AdvancedBlackjackGame(discord.ui.View):
                 self.statuses[i] = "Lost"
             elif d_score > 21 or p_score > d_score:
                 self.statuses[i] = "Won"
-                net, tax = await db.process_town_payout(self.user.id, self.bets[i] * 2)
+                desired = self.bets[i] * 2
+                gross = await db.gross_for_desired_net(desired)
+                net, tax = await db.process_town_payout(self.user.id, gross)
                 self.net_payouts[i] = net
                 self.taxes[i] = tax
             elif p_score < d_score:
@@ -506,7 +512,8 @@ class RouletteGameUI(discord.ui.View):
             dead_player = self.alive.pop(self.turn_idx)
             if len(self.alive) == 1:
                 winner = self.alive[0]
-                net, tax = await db.process_town_payout(winner.id, self.pot)
+                gross = await db.gross_for_desired_net(self.pot)
+                net, tax = await db.process_town_payout(winner.id, gross)
                 embed = discord.Embed(
                     title="🔫 BANG!", 
                     description=f"💀 **{dead_player.display_name}** was eliminated!\n\n🎉 **{winner.display_name}** survives and wins **${net:,.2f}**!\n*(Town Tax: ${tax:,.2f})*", 
@@ -642,8 +649,9 @@ class BellySlapGame(discord.ui.View):
              return await interaction.response.send_message("You have to slap at least once!", ephemeral=True)
 
         self.ended = True
-        winnings = self.bet * self.multiplier
-        net, tax = await db.process_town_payout(self.user.id, winnings)
+        desired_net = self.bet * self.multiplier
+        gross = await db.gross_for_desired_net(desired_net)
+        net, tax = await db.process_town_payout(self.user.id, gross)
         
         self.clear_items()
         await interaction.response.edit_message(embed=self.get_embed(status="won", net=net, tax=tax), view=self)
@@ -751,8 +759,9 @@ class MinesGame(discord.ui.View):
             if self.revealed_safe == self.safe_count:
                 self.ended = True
                 self.reveal_all(interaction)
-                winnings = self.bet * self.multiplier
-                net, tax = await db.process_town_payout(self.user.id, winnings)
+                desired_net = self.bet * self.multiplier
+                gross = await db.gross_for_desired_net(desired_net)
+                net, tax = await db.process_town_payout(self.user.id, gross)
                 embed.color = 0x2ecc71
                 embed.title = f"💎 PERFECT GAME! Won ${net:,.2f} (Tax: ${tax:,.2f})!"
                 self.stop()
@@ -767,8 +776,9 @@ class MinesGame(discord.ui.View):
         if self.ended or self.revealed_safe == 0: return await interaction.response.defer()
         
         self.ended = True
-        winnings = self.bet * self.multiplier
-        net, tax = await db.process_town_payout(self.user.id, winnings)
+        desired_net = self.bet * self.multiplier
+        gross = await db.gross_for_desired_net(desired_net)
+        net, tax = await db.process_town_payout(self.user.id, gross)
         
         self.reveal_all(interaction)
         embed = interaction.message.embeds[0]
@@ -872,9 +882,9 @@ class PlinkoGame(discord.ui.View):
         self.ended = True
         landed_idx, moves = self._simulate_drop()
         multiplier = self.multipliers[landed_idx]
-        gross = self.bet * multiplier
+        desired_net = self.bet * multiplier
+        gross = await db.gross_for_desired_net(desired_net)
 
-        # Payouts flow through town-tax logic to match other casino games.
         net, tax = await db.process_town_payout(self.user.id, gross)
 
         self.clear_items()
@@ -1078,7 +1088,8 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         roll = random.randint(1, 100)
         if roll == 1:
             winnings = cost * 50
-            net, tax = await db.process_town_payout(interaction.user.id, winnings)
+            gross = await db.gross_for_desired_net(winnings)
+            net, tax = await db.process_town_payout(interaction.user.id, gross)
             embed = discord.Embed(title="🎫 Lottery Results", description=f"🎉 **JACKPOT!** You scratched off a winning ticket and got **${net:,.2f}**!\n*(Town Tax: ${tax:,.2f})*", color=0xf1c40f)
         else:
             embed = discord.Embed(title="🎫 Lottery Results", description="🗑️ *Scratch, scratch...* Nothing. Better luck next time.", color=0x95a5a6)
@@ -1126,13 +1137,15 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         embed = discord.Embed(title="🎰 Slot Machine", description=f"## [ {result[0]} | {result[1]} | {result[2]} ]\n\n", color=0xe67e22)
         
         if result[0] == result[1] == result[2]:
-            winnings = bet * 10
-            net, tax = await db.process_town_payout(interaction.user.id, winnings)
+            desired = bet * 10
+            gross = await db.gross_for_desired_net(desired)
+            net, tax = await db.process_town_payout(interaction.user.id, gross)
             embed.description += f"**JACKPOT!** You won ${net:,.2f} *(Tax: ${tax:,.2f})*!"
             embed.color = 0xf1c40f
         elif result[0] == result[1] or result[1] == result[2] or result[0] == result[2]:
-            winnings = bet * 2
-            net, tax = await db.process_town_payout(interaction.user.id, winnings)
+            desired = bet * 2
+            gross = await db.gross_for_desired_net(desired)
+            net, tax = await db.process_town_payout(interaction.user.id, gross)
             embed.description += f"**Small Win!** You got two matches and won ${net:,.2f} *(Tax: ${tax:,.2f})*!"
             embed.color = 0x2ecc71
         else:
@@ -1163,8 +1176,9 @@ class Casino(commands.GroupCog, group_name="casino", group_description="Gamble y
         
         if choice.value == color:
             multiplier = 14 if color == "green" else 2
-            winnings = bet * multiplier
-            net, tax = await db.process_town_payout(interaction.user.id, winnings)
+            desired = bet * multiplier
+            gross = await db.gross_for_desired_net(desired)
+            net, tax = await db.process_town_payout(interaction.user.id, gross)
             embed.description += f"🎉 **You won!** Payout: ${net:,.2f} *(Tax: ${tax:,.2f})*"
             embed.color = 0x2ecc71
         else:
