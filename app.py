@@ -1212,13 +1212,15 @@ def api_casino_slots():
     emojis = ["🍒", "🍋", "🍇", "🔔", "💎", "7️⃣"]
     result = [random.choice(emojis) for _ in range(3)]
     if result[0] == result[1] == result[2]:
-        winnings = bet * 10
-        net, tax = run_async(db.process_town_payout(user_id, winnings))
+        desired = bet * 10
+        gross = run_async(db.gross_for_desired_net(desired))
+        net, tax = run_async(db.process_town_payout(user_id, gross))
         new_bal = run_async(db.get_balance(user_id))
         return {"success": True, "result": result, "win": "jackpot", "multiplier": 10, "net": net, "tax": tax, "new_balance": new_bal}
     if result[0] == result[1] or result[1] == result[2] or result[0] == result[2]:
-        winnings = bet * 2
-        net, tax = run_async(db.process_town_payout(user_id, winnings))
+        desired = bet * 2
+        gross = run_async(db.gross_for_desired_net(desired))
+        net, tax = run_async(db.process_town_payout(user_id, gross))
         new_bal = run_async(db.get_balance(user_id))
         return {"success": True, "result": result, "win": "pair", "multiplier": 2, "net": net, "tax": tax, "new_balance": new_bal}
     new_bal = run_async(db.get_balance(user_id))
@@ -1247,8 +1249,9 @@ def api_casino_roulette():
         color = "red"
     if choice == color:
         mult = 14 if color == "green" else 2
-        winnings = bet * mult
-        net, tax = run_async(db.process_town_payout(user_id, winnings))
+        desired = bet * mult
+        gross = run_async(db.gross_for_desired_net(desired))
+        net, tax = run_async(db.process_town_payout(user_id, gross))
         new_bal = run_async(db.get_balance(user_id))
         return {"success": True, "number": roll, "color": color, "won": True, "multiplier": mult, "net": net, "tax": tax, "new_balance": new_bal}
     new_bal = run_async(db.get_balance(user_id))
@@ -1280,7 +1283,9 @@ def api_casino_blackjack_start():
             run_async(db.update_balance(user_id, bet))
         else:
             status = "blackjack"
-            net, tax = run_async(db.process_town_payout(user_id, bet * 2.5))
+            desired = bet * 2.5
+            gross = run_async(db.gross_for_desired_net(desired))
+            net, tax = run_async(db.process_town_payout(user_id, gross))
     else:
         status = "Playing"
     session['casino_bj'] = {
@@ -1347,8 +1352,9 @@ def api_casino_blackjack_action():
                             statuses[i] = "lost"
                         elif d_score > 21 or ps > d_score:
                             statuses[i] = "won"
-                            w = bets[i] * 2
-                            n, t = run_async(db.process_town_payout(user_id, w))
+                            desired = bets[i] * 2
+                            gross = run_async(db.gross_for_desired_net(desired))
+                            n, t = run_async(db.process_town_payout(user_id, gross))
                             net_payouts[i], taxes[i] = n, t
                             total_net += n
                             total_tax += t
@@ -1400,7 +1406,9 @@ def api_casino_blackjack_action():
                     statuses[i] = "lost"
                 elif d_score > 21 or ps > d_score:
                     statuses[i] = "won"
-                    n, t = run_async(db.process_town_payout(user_id, bets[i] * 2))
+                    desired = bets[i] * 2
+                    gross = run_async(db.gross_for_desired_net(desired))
+                    n, t = run_async(db.process_town_payout(user_id, gross))
                     net_payouts[i], taxes[i] = n, t
                     total_net += n
                     total_tax += t
@@ -1449,7 +1457,9 @@ def api_casino_blackjack_action():
                     statuses[i] = "lost"
                 elif d_score > 21 or ps > d_score:
                     statuses[i] = "won"
-                    n, t = run_async(db.process_town_payout(user_id, bets[i] * 2))
+                    desired = bets[i] * 2
+                    gross = run_async(db.gross_for_desired_net(desired))
+                    n, t = run_async(db.process_town_payout(user_id, gross))
                     net_payouts[i], taxes[i] = n, t
                 elif ps < d_score:
                     statuses[i] = "lost"
@@ -1545,8 +1555,9 @@ def api_casino_slap_action():
     if action == "cashout":
         if state['slaps'] == 0:
             return {"success": False, "error": "Slap at least once before cashing out"}
-        winnings = state['bet'] * state['multiplier']
-        net, tax = run_async(db.process_town_payout(user_id, winnings))
+        desired = state['bet'] * state['multiplier']
+        gross = run_async(db.gross_for_desired_net(desired))
+        net, tax = run_async(db.process_town_payout(user_id, gross))
         session.pop('casino_slap', None)
         new_bal = run_async(db.get_balance(user_id))
         return {"success": True, "action": "cashout", "net": net, "tax": tax, "slaps": state['slaps'], "multiplier": state['multiplier'], "new_balance": new_bal}
@@ -1610,8 +1621,9 @@ def api_casino_mines_reveal():
     session['casino_mines'] = state
     new_bal = run_async(db.get_balance(user_id))
     if state['safe_revealed'] >= safe_count:
-        winnings = state['bet'] * state['multiplier']
-        net, tax = run_async(db.process_town_payout(user_id, winnings))
+        desired = state['bet'] * state['multiplier']
+        gross = run_async(db.gross_for_desired_net(desired))
+        net, tax = run_async(db.process_town_payout(user_id, gross))
         session.pop('casino_mines', None)
         new_bal = run_async(db.get_balance(user_id))
         return {"success": True, "mine": False, "tile": tile, "multiplier": state['multiplier'], "perfect": True, "net": net, "tax": tax, "game_over": True, "new_balance": new_bal}
@@ -1628,8 +1640,9 @@ def api_casino_mines_cashout():
         return {"success": False, "error": "No active mines game"}
     if state['safe_revealed'] == 0:
         return {"success": False, "error": "Reveal at least one gem first"}
-    winnings = state['bet'] * state['multiplier']
-    net, tax = run_async(db.process_town_payout(user_id, winnings))
+    desired = state['bet'] * state['multiplier']
+    gross = run_async(db.gross_for_desired_net(desired))
+    net, tax = run_async(db.process_town_payout(user_id, gross))
     session.pop('casino_mines', None)
     new_bal = run_async(db.get_balance(user_id))
     return {"success": True, "net": net, "tax": tax, "multiplier": state['multiplier'], "game_over": True, "new_balance": new_bal}
@@ -1654,7 +1667,8 @@ def api_casino_plinko():
         idx = max(0, min(len(multipliers) - 1, idx + step))
         moves.append("L" if step < 0 else "R")
     mult = multipliers[idx]
-    gross = bet * mult
+    desired = bet * mult
+    gross = run_async(db.gross_for_desired_net(desired))
     net, tax = run_async(db.process_town_payout(user_id, gross))
     new_bal = run_async(db.get_balance(user_id))
     return {"success": True, "landed_idx": idx, "multiplier": mult, "moves": moves, "gross": gross, "net": net, "tax": tax, "new_balance": new_bal}
