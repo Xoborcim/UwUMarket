@@ -1,0 +1,70 @@
+{# Renders a row of interactable NPCs for the current page. Pass npcs=list of {id, name, emoji, dialogue, action}. #}
+{% if npcs %}
+<div class="npc-area">
+    <div class="npc-area-label">Locals</div>
+    <div class="npc-strip">
+        {% for npc in npcs %}
+        <button type="button" class="npc-card" data-npc-id="{{ npc.id }}" data-npc-name="{{ npc.name }}" data-npc-emoji="{{ npc.emoji }}"
+                data-npc-dialogue="{{ (npc.dialogue | join('\u241f') if npc.dialogue else '') | e }}"
+                {% if npc.action %}data-npc-action-label="{{ npc.action.label }}" data-npc-action-url="{{ npc.action.url }}"{% endif %}
+                aria-label="Talk to {{ npc.name }}">
+            <span class="npc-avatar">{{ npc.emoji }}</span>
+            <span class="npc-name">{{ npc.name }}</span>
+        </button>
+        {% endfor %}
+    </div>
+</div>
+<div class="npc-modal-overlay" id="npc-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="npc-modal-title" style="display: none;">
+    <div class="npc-modal">
+        <div class="npc-modal-header">
+            <span class="npc-modal-avatar" id="npc-modal-avatar"></span>
+            <h2 class="npc-modal-title" id="npc-modal-title"></h2>
+            <button type="button" class="npc-modal-close" id="npc-modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="npc-modal-body">
+            <p class="npc-modal-dialogue" id="npc-modal-dialogue"></p>
+            <a href="#" class="npc-modal-action" id="npc-modal-action" style="display: none;"></a>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    var overlay = document.getElementById('npc-modal-overlay');
+    if (!overlay) return;
+    var titleEl = document.getElementById('npc-modal-title');
+    var avatarEl = document.getElementById('npc-modal-avatar');
+    var dialogueEl = document.getElementById('npc-modal-dialogue');
+    var actionEl = document.getElementById('npc-modal-action');
+    var closeBtn = document.getElementById('npc-modal-close');
+    function openModal(name, emoji, dialogue, actionLabel, actionUrl) {
+        titleEl.textContent = name;
+        avatarEl.textContent = emoji || '🧑';
+        dialogueEl.textContent = dialogue || '...';
+        if (actionLabel && actionUrl) {
+            actionEl.textContent = actionLabel;
+            actionEl.href = actionUrl;
+            actionEl.style.display = 'inline-flex';
+        } else {
+            actionEl.style.display = 'none';
+        }
+        overlay.style.display = 'flex';
+    }
+    function closeModal() { overlay.style.display = 'none'; }
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    document.querySelectorAll('.npc-card').forEach(function(card) {
+        card.addEventListener('click', function() {
+            var raw = (card.getAttribute('data-npc-dialogue') || '').split('\u241f');
+            var dialogue = raw.length ? raw[Math.floor(Math.random() * raw.length)] : '...';
+            openModal(
+                card.getAttribute('data-npc-name') || 'NPC',
+                card.getAttribute('data-npc-emoji'),
+                dialogue,
+                card.getAttribute('data-npc-action-label'),
+                card.getAttribute('data-npc-action-url')
+            );
+        });
+    });
+})();
+</script>
+{% endif %}
