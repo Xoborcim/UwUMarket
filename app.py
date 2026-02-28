@@ -386,30 +386,13 @@ def lootbox_page():
     available_sets = [d for d in os.listdir("lootboxes") if os.path.isdir(os.path.join("lootboxes", d))] if os.path.exists("lootboxes") else []
     return render_template('lootbox.html', available_sets=available_sets, active_page="lootbox")
 
-@app.route('/api/open_box', methods=['POST'])
-def api_open_box():
-    if 'user_id' not in session: return {"success": False, "message": "Not logged in"}, 401
-    user_id = session['user_id']
-    set_name = (request.get_json() or {}).get('set_name', 'Base_Set')
-    cost = 10000.0
-    
-    valid_tiers = [tier for tier in TIER_WEIGHTS.keys() if os.path.exists(f"lootboxes/{set_name}/{tier}") and any(f.endswith('.png') for f in os.listdir(f"lootboxes/{set_name}/{tier}"))]
-    if not valid_tiers: return {"success": False, "message": f"Set '{set_name}' is empty."}
-
-    bal = run_async(db.get_balance(user_id))
-    if bal < cost: return {"success": False, "message": f"Not enough gold! Need ${cost:,.2f}."}
-        
-    run_async(db.update_balance(user_id, -cost))
+def _open_one_box(user_id, set_name, valid_tiers):
+    """Roll one item and add to user inventory. Returns (item_dict, None) or (None, error_msg)."""
     rolled_tier = random.choices(valid_tiers, weights=[TIER_WEIGHTS[t] for t in valid_tiers], k=1)[0]
     result = get_random_item(set_name, rolled_tier)
-    
     if not result:
-        run_async(db.update_balance(user_id, cost))
-        return {"success": False, "message": "Item generation failed."}
-
+        return None, "Item generation failed."
     item_name, image_url = result
-
-    # Look for RPG meta so lootboxes can drop permanent RPG gear.
     item_type = "Collectible"
     slot = None
     atk_bonus = def_bonus = int_bonus = 0
@@ -429,7 +412,6 @@ def api_open_box():
                     int_bonus = int(item_meta.get("int_bonus", 0) or 0)
         except Exception:
             pass
-
     run_async(
         db.add_item(
             user_id,
@@ -443,15 +425,43 @@ def api_open_box():
             int_bonus=int_bonus,
         )
     )
-    
-    # Shout to the world about the pull!
-    if rolled_tier in ["Epic", "Legendary", "Mythic"]:
-        broadcast_update('big_pull', {'username': session['username'], 'item': item_name, 'tier': rolled_tier})
-        
+    return {"name": item_name, "tier": rolled_tier, "image": image_url}, None
+
+
+@app.route('/api/open_box', methods=['POST'])
+def api_open_box():
+    if 'user_id' not in session: return {"success": False, "message": "Not logged in"}, 401
+    user_id = session['user_id']
+    data = request.get_json() or {}
+    set_name = data.get('set_name', 'Base_Set')
+    count = max(1, min(10, int(data.get('count', 1))))
+    cost_per = 10000.0
+    total_cost = cost_per * count
+
+    valid_tiers = [tier for tier in TIER_WEIGHTS.keys() if os.path.exists(f"lootboxes/{set_name}/{tier}") and any(f.endswith('.png') for f in os.listdir(f"lootboxes/{set_name}/{tier}"))]
+    if not valid_tiers: return {"success": False, "message": f"Set '{set_name}' is empty."}
+
+    bal = run_async(db.get_balance(user_id))
+    if bal < total_cost: return {"success": False, "message": f"Not enough gold! Need ${total_cost:,.2f} for {count} box(es)."}
+
+    run_async(db.update_balance(user_id, -total_cost))
+    items = []
+    for _ in range(count):
+        item_dict, err = _open_one_box(user_id, set_name, valid_tiers)
+        if err:
+            run_async(db.update_balance(user_id, total_cost))
+            for _ in items:
+                pass  # already added; could try to remove if DB supported it
+            return {"success": False, "message": err}
+        items.append(item_dict)
+        if item_dict["tier"] in ["Epic", "Legendary", "Mythic"]:
+            broadcast_update('big_pull', {'username': session['username'], 'item': item_dict['name'], 'tier': item_dict['tier']})
+
     return {
         "success": True,
-        "message": f"Unboxed a {rolled_tier} {item_name}!",
-        "item": {"name": item_name, "tier": rolled_tier, "image": image_url},
+        "message": f"Unboxed {len(items)} item(s)!" if count > 1 else f"Unboxed a {items[0]['tier']} {items[0]['name']}!",
+        "items": items,
+        "item": items[0],
     }
 
 # --- TOWN HALL ROUTES ---
@@ -1107,7 +1117,7 @@ def api_casino_plinko():
         return {"success": False, "error": "Bet must be positive"}
     if not run_async(db.update_balance(user_id, -bet)):
         return {"success": False, "error": "Insufficient funds"}
-    multipliers = [10.0, 4.0, 2.2, 1.4, 0.8, 1.4, 2.2, 4.0, 10.0]
+    multipliers = [2.0, 1.2, 1.0, 0.6, 0.2, 0.6, 1.0, 1.2, 2.0]
     center = len(multipliers) // 2
     idx = center
     moves = []

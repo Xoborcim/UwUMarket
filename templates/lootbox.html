@@ -99,6 +99,23 @@
             margin-top: 15px;
             min-height: 20px;
         }
+        .revealed-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 12px;
+            margin-top: 20px;
+            max-width: 100%;
+        }
+        .revealed-grid .mini-item {
+            background: #020617;
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            padding: 8px;
+            text-align: center;
+        }
+        .revealed-grid .mini-item img { width: 100%; height: 60px; object-fit: contain; }
+        .revealed-grid .mini-item .mini-tier { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
+        .revealed-grid .mini-item .mini-name { font-size: 0.7rem; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         @media (max-width: 768px) {
             .lootbox-container { padding: 0; }
             select { width: 100%; min-height: 44px; }
@@ -132,6 +149,21 @@
                     <option value="Base_Set">Base Set</option>
                 {% endif %}
             </select>
+            <div style="margin-bottom: 14px;">
+                <label for="box-count" style="color: var(--text-muted); margin-right: 8px;">Open:</label>
+                <select id="box-count">
+                    <option value="1">1 box ($10,000)</option>
+                    <option value="2">2 boxes ($20,000)</option>
+                    <option value="3">3 boxes ($30,000)</option>
+                    <option value="4">4 boxes ($40,000)</option>
+                    <option value="5">5 boxes ($50,000)</option>
+                    <option value="6">6 boxes ($60,000)</option>
+                    <option value="7">7 boxes ($70,000)</option>
+                    <option value="8">8 boxes ($80,000)</option>
+                    <option value="9">9 boxes ($90,000)</option>
+                    <option value="10">10 boxes ($100,000)</option>
+                </select>
+            </div>
 
             <div class="unboxing-stage">
                 <div id="box-visual" class="box-icon">📦</div>
@@ -144,6 +176,7 @@
                     <img id="reward-image" class="reward-image" src="">
                     <div id="reward-name" class="reward-name"></div>
                 </div>
+                <div id="reward-grid" class="revealed-grid" style="display: none;"></div>
             </div>
         </div>
     </div>
@@ -151,15 +184,28 @@
 
 {% block extra_scripts %}
     <script>
+        const COST_PER = 10000;
+        function updateOpenButtonLabel() {
+            const count = parseInt(document.getElementById('box-count').value, 10) || 1;
+            const total = COST_PER * count;
+            const btn = document.getElementById('open-btn');
+            btn.innerText = count === 1 ? "Open Box ($10,000)" : "Open " + count + " Boxes ($" + total.toLocaleString() + ")";
+        }
+        document.getElementById('box-count').addEventListener('change', updateOpenButtonLabel);
+
         async function openLootbox() {
             const btn = document.getElementById('open-btn');
             const box = document.getElementById('box-visual');
             const card = document.getElementById('reward-card');
+            const grid = document.getElementById('reward-grid');
             const errorMsg = document.getElementById('error-msg');
             const selectedSet = document.getElementById('set-selector').value;
+            const count = Math.max(1, Math.min(10, parseInt(document.getElementById('box-count').value, 10) || 1));
 
             errorMsg.innerText = "";
             card.style.display = "none";
+            grid.style.display = "none";
+            grid.innerHTML = "";
             btn.disabled = true;
             btn.innerText = "Unlocking...";
 
@@ -167,14 +213,14 @@
                 const response = await fetch('/api/open_box', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ set_name: selectedSet })
+                    body: JSON.stringify({ set_name: selectedSet, count: count })
                 });
                 const result = await response.json();
 
                 if (!result.success) {
                     errorMsg.innerText = result.message;
                     btn.disabled = false;
-                    btn.innerText = "Open Box ($10,000)";
+                    updateOpenButtonLabel();
                     return;
                 }
 
@@ -187,24 +233,30 @@
                 
                 setTimeout(() => {
                     box.classList.remove('shake');
-                    box.innerText = "✨"; 
-                    
-                    document.getElementById('reward-tier').innerText = result.item.tier;
-                    document.getElementById('reward-name').innerText = result.item.name;
-                    document.getElementById('reward-image').src = result.item.image;
-                    
-                    card.className = "revealed-item tier-" + result.item.tier;
-                    document.getElementById('reward-tier').className = "tier-label text-" + result.item.tier;
+                    box.innerText = count > 1 ? "✨ x" + count : "✨";
+                    const items = result.items || [result.item];
 
-                    card.style.display = "block";
+                    if (items.length > 1) {
+                        grid.innerHTML = items.map(function(it) {
+                            return '<div class="mini-item tier-' + it.tier + '"><div class="mini-tier">' + it.tier + '</div><img src="' + (it.image || '') + '" alt=""><div class="mini-name">' + (it.name || '') + '</div></div>';
+                        }).join('');
+                        grid.style.display = "grid";
+                    } else {
+                        document.getElementById('reward-tier').innerText = result.item.tier;
+                        document.getElementById('reward-name').innerText = result.item.name;
+                        document.getElementById('reward-image').src = result.item.image;
+                        card.className = "revealed-item tier-" + result.item.tier;
+                        document.getElementById('reward-tier').className = "tier-label text-" + result.item.tier;
+                        card.style.display = "block";
+                    }
                     btn.disabled = false;
-                    btn.innerText = "Open Another ($10,000)";
+                    updateOpenButtonLabel();
                 }, 500);
 
             } catch (error) {
                 errorMsg.innerText = "Server communication failed.";
                 btn.disabled = false;
-                btn.innerText = "Open Box ($10,000)";
+                updateOpenButtonLabel();
             }
         }
     </script>

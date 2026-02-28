@@ -795,9 +795,8 @@ class PlinkoGame(discord.ui.View):
         # More rows makes the path look more "plinko-like" while staying readable in Discord.
         self.rows = 10
 
-        # Slot multipliers are symmetric so center is safer and edges are high-risk/high-reward.
-        # This is a common plinko feel: middle tends to return less variance, edges spike payouts.
-        self.multipliers = [10.0, 4.0, 2.2, 1.4, 0.8, 1.4, 2.2, 4.0, 10.0]
+        # Slot multipliers are symmetric; center is lowest, edges higher but much lower than before.
+        self.multipliers = [2.0, 1.2, 1.0, 0.6, 0.2, 0.6, 1.0, 1.2, 2.0]
         self.center_index = len(self.multipliers) // 2
 
     # Render a compact visual lane for the final result.
