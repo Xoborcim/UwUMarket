@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Guild Wars{% endblock %}
+
+{% block extra_head %}
+    <style>
+        .guild-wars-container { max-width: 900px; margin: 0 auto; }
+        .war-card {
+            background: rgba(8, 14, 36, 0.95);
+            border-radius: 16px;
+            border: 1px solid rgba(31, 41, 55, 0.9);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .war-score {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            margin: 20px 0;
+            font-size: 1.2rem;
+        }
+        .war-score .guild-name { font-weight: 700; color: var(--accent-color); }
+        .war-score .wins { font-family: ui-monospace, monospace; font-size: 1.5rem; color: #facc15; }
+        .enemy-list { display: flex; flex-direction: column; gap: 10px; }
+        .enemy-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; background: rgba(15, 23, 42, 0.8);
+            border-radius: 10px; border: 1px solid var(--border-color);
+        }
+        .enemy-row .name { font-weight: 600; }
+        .fight-btn {
+            background: #dc2626; color: white; border: none; padding: 8px 16px;
+            border-radius: 8px; font-weight: 700; cursor: pointer;
+        }
+        .fight-btn:hover { background: #b91c1c; }
+        .fight-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .challenge-select {
+            padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);
+            background: var(--card-bg); color: var(--text-main); font-size: 1rem;
+            min-width: 200px;
+        }
+        .pill-leader { font-size: 0.7rem; color: var(--text-muted); margin-left: 6px; }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <div class="page-title">Guild Wars</div>
+            <div class="page-subtitle">Challenge another guild and fight head-to-head. First to {{ wins_to_victory }} battle wins wins the war. Victorious guild earns ${{ "{:,.0f}".format(win_bonus) }}.</div>
+        </div>
+        <div class="pill">⚔️ War</div>
+    </div>
+
+    <div class="content-card">
+        <div class="guild-wars-container">
+            {% if not guild_info %}
+                <div class="war-card">
+                    <p style="color: var(--text-muted); margin: 0;">You must be in a guild to participate in Guild Wars. Create or join a guild from the <a href="/town" style="color: var(--accent-color);">Guild Hall</a>.</p>
+                </div>
+            {% else %}
+                {% if war %}
+                    <div class="war-card">
+                        <h2 style="margin-top: 0; color: var(--accent-color);">
+                            {% if war.status == 'pending' %}
+                                ⏳ Pending: {{ war.challenger_name }} vs {{ war.defender_name }}
+                            {% else %}
+                                🔥 Active War: {{ war.challenger_name }} vs {{ war.defender_name }}
+                            {% endif %}
+                        </h2>
+                        <div class="war-score">
+                            <span class="guild-name">{{ war.challenger_name }}</span>
+                            <span class="wins">{{ war.challenger_wins or 0 }}</span>
+                            <span style="color: var(--text-muted);">–</span>
+                            <span class="wins">{{ war.defender_wins or 0 }}</span>
+                            <span class="guild-name">{{ war.defender_name }}</span>
+                        </div>
+                        {% if war.status == 'pending' %}
+                            <p style="color: var(--text-muted);">
+                                Waiting for <strong>{{ war.defender_name }}</strong> leader to accept the war.
+                                {% if guild_info.guild_role == 'leader' and war.defender_guild_id == guild_info.guild_id %}
+                                    (You are the defender leader — accept below.)
+                                {% endif %}
+                            </p>
+                            {% if war.defender_guild_id == guild_info.guild_id and guild_info.guild_role == 'leader' %}
+                                <button type="button" class="fight-btn" id="accept-war-btn" data-war-id="{{ war.id }}">Accept War</button>
+                                <p id="accept-msg" style="margin-top: 10px; min-height: 1.4em; color: var(--text-muted); font-size: 0.9rem;"></p>
+                            {% endif %}
+                        {% elif war.status == 'active' %}
+                            {% if enemy_members %}
+                                <h3 style="margin-top: 20px; margin-bottom: 12px;">Attack an enemy</h3>
+                                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 12px;">Choose a member of the opposing guild to fight. Combat uses your RPG class and equipped gear.</p>
+                                <div class="enemy-list">
+                                    {% for m in enemy_members %}
+                                    <div class="enemy-row">
+                                        <span class="name">{{ m.username or 'Unknown' }} <span class="pill-leader">{% if m.guild_role == 'leader' %}Leader{% endif %}</span></span>
+                                        <button type="button" class="fight-btn" data-war-id="{{ war.id }}" data-defender-id="{{ m.user_id }}">Fight</button>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <p style="color: var(--text-muted);">The enemy guild has no members to fight.</p>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <div class="war-card">
+                        <h3 style="margin-top: 0;">Declare War</h3>
+                        <p style="color: var(--text-muted); margin-bottom: 16px;">Your guild (<strong>{{ guild_info.guild_name }}</strong>) can challenge another guild. Only your guild leader can declare; the other guild's leader must accept.</p>
+                        {% if guild_info.guild_role == 'leader' %}
+                            <form id="challenge-form" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                                <select name="defender_guild_id" id="defender-guild-id" class="challenge-select" required>
+                                    <option value="">Choose a guild…</option>
+                                    {% for g in all_guilds %}
+                                        {% if g.id != guild_info.guild_id %}
+                                        <option value="{{ g.id }}">{{ g.name }} (Lv.{{ g.level or 1 }})</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="fight-btn">Declare War</button>
+                            </form>
+                            <p id="challenge-msg" style="margin-top: 10px; min-height: 1.4em; color: var(--text-muted); font-size: 0.9rem;"></p>
+                        {% else %}
+                            <p style="color: var(--text-muted);">Only the guild leader can declare war. Ask your leader to visit this page.</p>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            {% endif %}
+            <div id="notification-banner" style="display: none; padding: 15px; margin-top: 20px; border-radius: 8px; text-align: center; font-weight: bold; color: white;"></div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_scripts %}
+    <script>
+        const banner = document.getElementById('notification-banner');
+        function showBanner(text, isSuccess) {
+            banner.textContent = text;
+            banner.style.backgroundColor = isSuccess ? '#22c55e' : '#ef4444';
+            banner.style.display = 'block';
+        }
+
+        document.getElementById('challenge-form')?.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const select = document.getElementById('defender-guild-id');
+            const msgEl = document.getElementById('challenge-msg');
+            const defenderId = select?.value;
+            if (!defenderId) return;
+            msgEl.textContent = 'Sending…';
+            try {
+                const r = await fetch('/api/guild_war/challenge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ defender_guild_id: parseInt(defenderId, 10) })
+                });
+                const data = await r.json();
+                msgEl.textContent = data.message || (data.success ? 'War declared!' : 'Failed.');
+                if (data.success) {
+                    showBanner(data.message, true);
+                    setTimeout(() => window.location.reload(), 1500);
+                }
+            } catch (err) {
+                msgEl.textContent = 'Request failed.';
+            }
+        });
+
+        document.getElementById('accept-war-btn')?.addEventListener('click', async function() {
+            const warId = this.dataset.warId;
+            const msgEl = document.getElementById('accept-msg');
+            this.disabled = true;
+            msgEl.textContent = 'Accepting…';
+            try {
+                const r = await fetch('/api/guild_war/accept', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ war_id: parseInt(warId, 10) })
+                });
+                const data = await r.json();
+                msgEl.textContent = data.message || '';
+                if (data.success) {
+                    showBanner(data.message, true);
+                    setTimeout(() => window.location.reload(), 1200);
+                } else {
+                    this.disabled = false;
+                }
+            } catch (err) {
+                msgEl.textContent = 'Request failed.';
+                this.disabled = false;
+            }
+        });
+
+        document.querySelectorAll('.enemy-row .fight-btn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const warId = this.dataset.warId;
+                const defenderId = this.dataset.defenderId;
+                this.disabled = true;
+                try {
+                    const r = await fetch('/api/guild_war/fight', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ war_id: parseInt(warId, 10), defender_user_id: parseInt(defenderId, 10) })
+                    });
+                    const data = await r.json();
+                    if (data.success) {
+                        showBanner(data.message + ' Score: ' + data.challenger_wins + ' – ' + data.defender_wins, data.you_won);
+                        setTimeout(() => window.location.reload(), 1800);
+                    } else {
+                        showBanner(data.message || 'Battle failed.', false);
+                        this.disabled = false;
+                    }
+                } catch (err) {
+                    showBanner('Request failed.', false);
+                    this.disabled = false;
+                }
+            });
+        });
+    </script>
+{% endblock %}
