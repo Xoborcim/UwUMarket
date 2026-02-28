@@ -136,10 +136,12 @@
         <div class="pill">🎰 Gacha</div>
     </div>
 
+    {% include '_npc_section.html' with context %}
+
     <div class="content-card">
         <div class="lootbox-container">
-            <h2 style="margin-top:0;">Purchase a Lootbox</h2>
-            <p style="color: var(--text-muted); margin-bottom: 18px;">Each roll costs <strong>$10,000.00</strong> of in‑game gold.</p>
+            <h2 style="margin-top:0;">Crates & Loot</h2>
+            <p style="color: var(--text-muted); margin-bottom: 18px;">Crack open crates for gear — <strong>$10,000</strong> gold per crate.</p>
 
             <select id="set-selector">
                 {% for set_name in available_sets %}
