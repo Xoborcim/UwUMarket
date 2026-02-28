@@ -94,7 +94,24 @@ async def initialize_db():
             ("users", "last_rpg_run_at", "DATETIME"),
             ("users", "last_login_at", "DATETIME"),
             ("users", "login_streak", "INTEGER DEFAULT 0"),
+            ("users", "guild_id", "INTEGER"),
+            ("users", "guild_role", "TEXT"),
         ]
+        
+        # Guilds table: user-created guilds with their own hall, treasury, world boss
+        await db.execute('''CREATE TABLE IF NOT EXISTS guilds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            leader_id INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            treasury REAL DEFAULT 0.0,
+            level INTEGER DEFAULT 1,
+            food INTEGER DEFAULT 100,
+            tax_rate REAL DEFAULT 0.10,
+            famine INTEGER DEFAULT 0,
+            world_boss_hp REAL DEFAULT 10000.0,
+            world_boss_max_hp REAL DEFAULT 10000.0
+        )''')
         
         for table, col, dtype in columns:
             try: 
@@ -385,7 +402,7 @@ async def process_daily(user_id):
         await db.commit()
         
         # NOTE: Using the new async function call
-        net, tax = await process_town_payout(user_id, 500.0)
+        net, tax = await process_town_payout(user_id, 750.0)
         return True, f"Daily claimed! You received **${net:,.2f}** *(Town Tax: ${tax:,.2f})*."
 
 # --- LOTTERY ---
@@ -403,7 +420,7 @@ async def get_lottery_stats():
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT COUNT(*) as c FROM lottery_tickets") as cursor:
             count = (await cursor.fetchone())['c']
-            pot = (count * 50) + 500
+            pot = (count * 75) + 750
             return count, pot
 
 async def draw_lottery_winner():
@@ -417,7 +434,7 @@ async def draw_lottery_winner():
         winner_row = random.choice(tickets)
         winner_id = winner_row['user_id']
         count = len(tickets)
-        pot = (count * 50) + 500
+        pot = (count * 75) + 750
         
         await db.execute("DELETE FROM lottery_tickets")
         await db.commit()
@@ -691,7 +708,7 @@ async def buy_market_item(buyer_id, item_id):
         except Exception as e: return False, str(e)
 
 # --- JOBS & TOWN INCOME SYSTEM ---
-ECONOMY_MULTIPLIER_DEFAULT = 0.5  # Global scale for all payouts (jobs, dungeon, casino). Raise for "prosperity" events.
+ECONOMY_MULTIPLIER_DEFAULT = 0.7  # Global scale for all payouts (jobs, dungeon, casino). Raise for "prosperity" events.
 
 async def get_economy_multiplier():
     """Return current economy multiplier (for UI / realm prosperity)."""
@@ -756,7 +773,7 @@ async def process_work(user_id, base_payout):
         await db.commit()
         return net_pay, tax_amount
 
-async def process_chat_income(user_id, amount, daily_cap=200.0):
+async def process_chat_income(user_id, amount, daily_cap=300.0):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
@@ -1240,7 +1257,7 @@ async def record_login_streak(user_id):
                 streak = 1
         except Exception:
             streak = 1
-        reward = min(20.0 + streak * 2.0, 80.0)
+        reward = min(35.0 + streak * 3.0, 120.0)
         await db.execute("UPDATE users SET last_login_at = ?, login_streak = ? WHERE user_id = ?", (now, streak, user_id))
         await db.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (reward, user_id))
         await db.commit()
@@ -1269,3 +1286,156 @@ async def deal_world_boss_damage(amount):
         await db.execute("UPDATE world_boss SET current_hp = ?, updated_at = ? WHERE id = 1", (new_hp, datetime.datetime.now()))
         await db.commit()
         return new_hp
+
+
+# --- GUILDS ---
+async def create_guild(leader_id, name):
+    """Create a guild. Leader joins as leader. Returns (guild_id, None) or (None, error_msg)."""
+    name = (name or "").strip()
+    if not name or len(name) < 2 or len(name) > 32:
+        return None, "Guild name must be 2–32 characters."
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT guild_id FROM users WHERE user_id = ?", (leader_id,)) as c:
+            row = await c.fetchone()
+        if row and row["guild_id"] is not None:
+            return None, "You are already in a guild. Leave it first."
+        try:
+            cursor = await db.execute(
+                """INSERT INTO guilds (name, leader_id, treasury, level, food, tax_rate, famine, world_boss_hp, world_boss_max_hp)
+                   VALUES (?, ?, 0.0, 1, 100, 0.10, 0, 10000.0, 10000.0)""",
+                (name, leader_id),
+            )
+            guild_id = cursor.lastrowid
+        except sqlite3.IntegrityError:
+            return None, "A guild with that name already exists."
+        await db.execute("UPDATE users SET guild_id = ?, guild_role = ? WHERE user_id = ?", (guild_id, "leader", leader_id))
+        await db.commit()
+        return guild_id, None
+
+async def get_guild(guild_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM guilds WHERE id = ?", (guild_id,)) as c:
+            row = await c.fetchone()
+        return dict(row) if row else None
+
+async def get_guild_state(guild_id):
+    """Return guild as town-like state (level, treasury, food, tax_rate, famine, user_count, name, leader_id, world_boss)."""
+    g = await get_guild(guild_id)
+    if not g:
+        return None
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT COUNT(*) as c FROM users WHERE guild_id = ?", (guild_id,)) as c:
+            row = await c.fetchone()
+    count = row["c"] if row and row["c"] else 0
+    return {
+        "id": g["id"],
+        "name": g["name"],
+        "leader_id": g["leader_id"],
+        "level": g["level"] or 1,
+        "treasury": g["treasury"] or 0.0,
+        "food": g["food"] or 100,
+        "tax_rate": g["tax_rate"] if g["tax_rate"] is not None else 0.10,
+        "famine": g["famine"] or 0,
+        "user_count": max(1, count),
+        "world_boss_hp": g.get("world_boss_hp") or 10000.0,
+        "world_boss_max_hp": g.get("world_boss_max_hp") or 10000.0,
+    }
+
+async def get_user_guild_info(user_id):
+    """Return user's guild dict with guild_id, guild_role, or None if not in guild."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT guild_id, guild_role FROM users WHERE user_id = ?", (user_id,)) as c:
+            row = await c.fetchone()
+    if not row or row["guild_id"] is None:
+        return None
+    guild = await get_guild(row["guild_id"])
+    if not guild:
+        return None
+    return {"guild_id": row["guild_id"], "guild_role": row["guild_role"] or "member", "guild_name": guild["name"], "leader_id": guild["leader_id"]}
+
+async def leave_guild(user_id):
+    """Remove user from guild. If leader, assign new leader or disband if alone."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT guild_id, guild_role FROM users WHERE user_id = ?", (user_id,)) as c:
+            row = await c.fetchone()
+        if not row or row["guild_id"] is None:
+            return False, "You are not in a guild."
+        gid = row["guild_id"]
+        is_leader = (row["guild_role"] or "") == "leader"
+        await db.execute("UPDATE users SET guild_id = NULL, guild_role = NULL WHERE user_id = ?", (user_id,))
+        if is_leader:
+            async with db.execute("SELECT user_id FROM users WHERE guild_id = ? AND user_id != ? LIMIT 1", (gid, user_id)) as c:
+                next_leader = await c.fetchone()
+            if next_leader:
+                await db.execute("UPDATE users SET guild_role = 'leader' WHERE user_id = ?", (next_leader["user_id"],))
+                await db.execute("UPDATE guilds SET leader_id = ? WHERE id = ?", (next_leader["user_id"], gid))
+            else:
+                await db.execute("DELETE FROM guilds WHERE id = ?", (gid,))
+        await db.commit()
+        return True, "Left the guild."
+
+async def disband_guild(leader_id):
+    """Leader only. Deletes guild and clears everyone's guild_id."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT guild_id, guild_role FROM users WHERE user_id = ?", (leader_id,)) as c:
+            row = await c.fetchone()
+        if not row or row["guild_id"] is None:
+            return False, "You are not in a guild."
+        if (row["guild_role"] or "") != "leader":
+            return False, "Only the guild leader can disband the guild."
+        gid = row["guild_id"]
+        await db.execute("UPDATE users SET guild_id = NULL, guild_role = NULL WHERE guild_id = ?", (gid,))
+        await db.execute("DELETE FROM guilds WHERE id = ?", (gid,))
+        await db.commit()
+        return True, "Guild disbanded."
+
+async def add_guild_treasury(guild_id, amount):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE guilds SET treasury = COALESCE(treasury, 0) + ? WHERE id = ?", (amount, guild_id))
+        await db.commit()
+
+async def add_guild_food(guild_id, amount):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE guilds SET food = COALESCE(food, 0) + ? WHERE id = ?", (amount, guild_id))
+        await db.commit()
+
+async def get_guild_world_boss(guild_id):
+    g = await get_guild(guild_id)
+    if not g:
+        return {"current_hp": 10000.0, "max_hp": 10000.0}
+    return {"current_hp": g.get("world_boss_hp") or 10000.0, "max_hp": g.get("world_boss_max_hp") or 10000.0}
+
+async def deal_guild_world_boss_damage(guild_id, amount):
+    """Returns new current_hp. Resets to max when <= 0."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT world_boss_hp, world_boss_max_hp FROM guilds WHERE id = ?", (guild_id,)) as c:
+            row = await c.fetchone()
+        if not row:
+            return 10000.0
+        cur = row["world_boss_hp"] or 10000.0
+        mx = row["world_boss_max_hp"] or 10000.0
+        new_hp = max(0.0, cur - amount)
+        if new_hp <= 0:
+            new_hp = mx
+        await db.execute("UPDATE guilds SET world_boss_hp = ? WHERE id = ?", (new_hp, guild_id))
+        await db.commit()
+        return new_hp
+
+async def get_top_guilds(limit=10):
+    """Order by treasury + level*10000 (so level matters)."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT id, name, leader_id, treasury, level, 
+                      (COALESCE(treasury, 0) + (COALESCE(level, 1) * 10000.0)) AS score
+               FROM guilds ORDER BY score DESC LIMIT ?""",
+            (limit,),
+        ) as c:
+            return await c.fetchall()

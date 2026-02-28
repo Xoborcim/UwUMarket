@@ -31,8 +31,8 @@ TIER_WEIGHTS = {
 }
 
 SCRAP_VALUES = {
-    "Common": 10.0, "Uncommon": 25.0, "Rare": 50.0, 
-    "Epic": 150.0, "Legendary": 500.0, "Mythic": 2000.0
+    "Common": 18.0, "Uncommon": 45.0, "Rare": 90.0, 
+    "Epic": 270.0, "Legendary": 900.0, "Mythic": 3600.0
 }
 
 # --- INTERACTABLE NPCs (MMO-RPG flavor) ---
@@ -89,10 +89,10 @@ ACHIEVEMENTS = {
 
 # --- DAILY QUESTS (id -> {name, desc, reward_gold, check: async (user_id) -> bool or sync) ---
 DAILY_QUESTS = [
-    {"id": "sell_one", "name": "List an item", "desc": "List 1 item on the Bazaar", "reward": 40.0},
-    {"id": "open_one", "name": "Crack a crate", "desc": "Open 1 lootbox", "reward": 20.0},
-    {"id": "donate", "name": "Support the guild", "desc": "Donate any amount to the Guild Hall", "reward": 30.0},
-    {"id": "dungeon_run", "name": "Brave the dungeon", "desc": "Complete a dungeon run (Discord)", "reward": 60.0},
+    {"id": "sell_one", "name": "List an item", "desc": "List 1 item on the Bazaar", "reward": 60.0},
+    {"id": "open_one", "name": "Crack a crate", "desc": "Open 1 lootbox", "reward": 35.0},
+    {"id": "donate", "name": "Support the guild", "desc": "Donate any amount to the Guild Hall", "reward": 50.0},
+    {"id": "dungeon_run", "name": "Brave the dungeon", "desc": "Complete a dungeon run (Discord)", "reward": 90.0},
 ]
 
 # --- SET BONUSES (set_name -> {2: {atk: x}, 4: {def: x}, 6: {atk: x, def: x}}) ---
@@ -651,13 +651,30 @@ def _get_rumors(town, world_boss):
 
 @app.route('/town')
 def town_hall():
-    town = run_async(db.get_town_state())
-    if not town: town = {'level': 1, 'treasury': 0.0, 'food': 0, 'tax_rate': 0.05, 'famine': 0, 'user_count': 1}
-    town = dict(town)
+    guild_info = None
+    if session.get("user_id"):
+        guild_info = run_async(db.get_user_guild_info(session["user_id"]))
+    if guild_info:
+        town = run_async(db.get_guild_state(guild_info["guild_id"]))
+        if not town:
+            guild_info = None
+            town = run_async(db.get_town_state())
+            if not town:
+                town = {'level': 1, 'treasury': 0.0, 'food': 0, 'tax_rate': 0.05, 'famine': 0, 'user_count': 1}
+            town = dict(town)
+            world_boss = run_async(db.get_world_boss()) or {"current_hp": 10000.0, "max_hp": 10000.0}
+        else:
+            town = dict(town)
+            world_boss = {"current_hp": town.get("world_boss_hp", 10000), "max_hp": town.get("world_boss_max_hp", 10000)}
+    else:
+        town = run_async(db.get_town_state())
+        if not town:
+            town = {'level': 1, 'treasury': 0.0, 'food': 0, 'tax_rate': 0.05, 'famine': 0, 'user_count': 1}
+        town = dict(town)
+        world_boss = run_async(db.get_world_boss()) or {"current_hp": 10000.0, "max_hp": 10000.0}
     town["guild_progress_pct"], town["guild_next_level_gold"] = _guild_progress(town)
-    world_boss = run_async(db.get_world_boss()) or {"current_hp": 10000.0, "max_hp": 10000.0}
     rumors = _get_rumors(town, world_boss)
-    return render_template('town.html', town=town, world_boss=world_boss, active_page="town", npcs=get_npcs_for_page("town"), rumors=rumors, **get_location_ambiance("town"))
+    return render_template('town.html', town=town, world_boss=world_boss, guild_info=guild_info, active_page="town", npcs=get_npcs_for_page("town"), rumors=rumors, **get_location_ambiance("town"))
 
 # Flavor messages for "Rest at the Inn" (RPG world interaction)
 REST_AT_INN_MESSAGES = [
@@ -691,7 +708,11 @@ def api_world_boss_damage():
     user_id = session["user_id"]
     if not run_async(db.update_balance(user_id, -gold)):
         return {"success": False, "error": "Insufficient funds."}
-    new_hp = run_async(db.deal_world_boss_damage(damage))
+    guild_info = run_async(db.get_user_guild_info(user_id))
+    if guild_info:
+        new_hp = run_async(db.deal_guild_world_boss_damage(guild_info["guild_id"], damage))
+    else:
+        new_hp = run_async(db.deal_world_boss_damage(damage))
     return {"success": True, "new_hp": new_hp, "damage": damage}
 
 @app.route('/api/donate', methods=['POST'])
@@ -708,26 +729,68 @@ def api_donate():
     if data.get('type') == 'gold':
         if bal < amount: return {"success": False, "message": "Not enough gold!"}
         run_async(db.update_balance(user_id, -amount))
-        async def donate_gold_db(amt):
-            async with aiosqlite.connect(DB_NAME) as db_conn:
-                await db_conn.execute("UPDATE town SET treasury = COALESCE(treasury, 0.0) + ? WHERE id=1", (amt,))
-                await db_conn.commit()
-        run_async(donate_gold_db(amount))
-        run_async(db.record_donation(user_id, amount))
-        broadcast_update('town_update', {'message': f"{session['username']} donated ${amount:,.2f}!"})
+        guild_info = run_async(db.get_user_guild_info(user_id))
+        if guild_info:
+            run_async(db.add_guild_treasury(guild_info["guild_id"], amount))
+            run_async(db.record_donation(user_id, amount))
+            broadcast_update('town_update', {'message': f"{session['username']} donated ${amount:,.2f} to {guild_info['guild_name']}!"})
+        else:
+            async def donate_gold_db(amt):
+                async with aiosqlite.connect(DB_NAME) as db_conn:
+                    await db_conn.execute("UPDATE town SET treasury = COALESCE(treasury, 0.0) + ? WHERE id=1", (amt,))
+                    await db_conn.commit()
+            run_async(donate_gold_db(amount))
+            run_async(db.record_donation(user_id, amount))
+            broadcast_update('town_update', {'message': f"{session['username']} donated ${amount:,.2f}!"})
         total_d = run_async(db.get_user_total_donated(user_id))
         if total_d and total_d >= 10000:
             run_async(db.unlock_achievement(user_id, "donate_10k"))
         run_async(db.set_quest_completed(user_id, "donate", datetime.date.today().isoformat()))
-        return {"success": True, "message": f"Donated ${amount:,.2f} to the Town Treasury!"}
+        dest = guild_info["guild_name"] if guild_info else "the Town Treasury"
+        return {"success": True, "message": f"Donated ${amount:,.2f} to {dest}!"}
         
     elif data.get('type') == 'food':
         cost = amount * 10
         if bal < cost: return {"success": False, "message": f"Not enough gold! {int(amount)} Food costs ${cost:,.2f}."}
         run_async(db.update_balance(user_id, -cost))
-        run_async(db.add_town_resources(food=int(amount)))
-        broadcast_update('town_update', {'message': f"{session['username']} bought {int(amount)} Food!"})
-        return {"success": True, "message": f"Bought {int(amount)} Food for the town for ${cost:,.2f}!"}
+        guild_info = run_async(db.get_user_guild_info(user_id))
+        if guild_info:
+            run_async(db.add_guild_food(guild_info["guild_id"], int(amount)))
+            broadcast_update('town_update', {'message': f"{session['username']} bought {int(amount)} Food for {guild_info['guild_name']}!"})
+        else:
+            run_async(db.add_town_resources(food=int(amount)))
+            broadcast_update('town_update', {'message': f"{session['username']} bought {int(amount)} Food!"})
+        dest = guild_info["guild_name"] if guild_info else "the town"
+        return {"success": True, "message": f"Bought {int(amount)} Food for {dest} for ${cost:,.2f}!"}
+
+
+@app.route('/api/guild/create', methods=['POST'])
+def api_guild_create():
+    if 'user_id' not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    guild_id, err = run_async(db.create_guild(session['user_id'], name))
+    if err:
+        return {"success": False, "message": err}
+    return {"success": True, "message": "Guild created!", "guild_id": guild_id}
+
+
+@app.route('/api/guild/leave', methods=['POST'])
+def api_guild_leave():
+    if 'user_id' not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    ok, msg = run_async(db.leave_guild(session['user_id']))
+    return {"success": ok, "message": msg}
+
+
+@app.route('/api/guild/disband', methods=['POST'])
+def api_guild_disband():
+    if 'user_id' not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    ok, msg = run_async(db.disband_guild(session['user_id']))
+    return {"success": ok, "message": msg}
+
 
 # --- BETTING EXCHANGE ROUTES ---
 
@@ -884,7 +947,7 @@ def leaderboard():
             
             # 1. Richest
             async with db_conn.execute("""
-                SELECT username, balance 
+                SELECT user_id, username, balance 
                 FROM users 
                 WHERE username IS NOT NULL 
                 ORDER BY balance DESC LIMIT 10
@@ -893,7 +956,7 @@ def leaderboard():
             
             # 2. Strongest
             async with db_conn.execute("""
-                SELECT username, max_floor 
+                SELECT user_id, username, max_floor 
                 FROM users 
                 WHERE username IS NOT NULL 
                 ORDER BY max_floor DESC LIMIT 10
@@ -902,7 +965,7 @@ def leaderboard():
                 
             # 3. Collectors
             async with db_conn.execute("""
-                SELECT u.username, COUNT(i.item_id) as item_count 
+                SELECT u.user_id, u.username, COUNT(i.item_id) as item_count 
                 FROM users u
                 JOIN inventory i ON u.user_id = i.user_id 
                 WHERE u.username IS NOT NULL
@@ -916,12 +979,15 @@ def leaderboard():
     richest, strongest, collectors = run_async(get_leaders())
     top_donors = run_async(db.get_top_donors(10))
     top_donors = [dict(d) for d in top_donors]
+    top_guilds = run_async(db.get_top_guilds(10))
+    top_guilds = [dict(g) for g in top_guilds]
     
     return render_template('leaderboard.html',
                            richest=richest,
                            strongest=strongest,
                            collectors=collectors,
                            top_donors=top_donors,
+                           top_guilds=top_guilds,
                            active_page="leaderboard",
                            **get_location_ambiance("leaderboard"))
 

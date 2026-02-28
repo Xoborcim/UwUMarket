@@ -259,6 +259,16 @@
                                 • Slot: {{ item.get('slot')|title }}
                             {% endif %}
                         </div>
+                        {% set atk = item.get('atk_bonus') or 0 %}
+                        {% set def = item.get('def_bonus') or 0 %}
+                        {% set int_b = item.get('int_bonus') or 0 %}
+                        {% if atk or def or int_b %}
+                        <div class="item-stats" style="font-size: 0.8rem; color: #94a3b8; margin-top: 6px;">
+                            {% if atk %}<span style="color: #f97316;">ATK +{{ atk }}</span>{% endif %}
+                            {% if def %}{% if atk %} · {% endif %}<span style="color: #3b82f6;">DEF +{{ def }}</span>{% endif %}
+                            {% if int_b %}{% if atk or def %} · {% endif %}<span style="color: #a855f7;">INT +{{ int_b }}</span>{% endif %}
+                        </div>
+                        {% endif %}
                         
                         <div class="button-group">
                             <button class="sell-button" onclick='openModal({{ item["item_id"] | tojson }}, {{ item["item_name"] | tojson }})'>List for gold</button>
