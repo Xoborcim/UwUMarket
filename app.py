@@ -59,6 +59,25 @@ NPCS_BY_PAGE = {
 def get_npcs_for_page(page_key):
     return NPCS_BY_PAGE.get(page_key, [])
 
+# --- LOCATION AMBIANCE (RPG "you are here" feel per page) ---
+LOCATION_AMBIANCE = {
+    "market": ("The Bazaar", "Merchants haggle and adventurers browse the stalls. Your gold purse weighs at your belt."),
+    "inventory": ("Your Armory", "Gear and crates from your travels. Equip, list for gold, or crack a crate."),
+    "lootbox": ("The Crate Room", "Mysterious crates from across the realm. Fortune favors the bold."),
+    "town": ("Guild Hall", "The heart of Polyville. Donate to the treasury, face the world boss, or rest at the inn."),
+    "casino": ("Tavern Games", "Dice and cards. The innkeeper nods from the bar. Bet within your means."),
+    "exchange": ("The Exchange", "Wagers on the realm's outcomes. Only the shrewd leave richer."),
+    "leaderboard": ("Hall of Fame", "The realm's finest — richest adventurers, deepest delvers, top donors."),
+    "quests": ("Quest Board", "Daily tasks from the guild. Complete them and claim your reward."),
+    "rpg_stats": ("RPG Stats", "Records of every adventurer. The Hall of Legends honors the boldest."),
+    "profile": ("Adventurer Profile", "Your renown, gear, and deeds. This is your legend."),
+}
+
+def get_location_ambiance(active_page):
+    """Return location_name and location_flavor for a page (for RPG ambiance)."""
+    t = LOCATION_AMBIANCE.get(active_page, ("Polyville", ""))
+    return {"location_name": t[0], "location_flavor": t[1]}
+
 # --- ACHIEVEMENTS (id -> {name, desc, emoji}) ---
 ACHIEVEMENTS = {
     "first_lootbox": {"name": "First Crate", "desc": "Open your first lootbox", "emoji": "📦"},
@@ -70,10 +89,10 @@ ACHIEVEMENTS = {
 
 # --- DAILY QUESTS (id -> {name, desc, reward_gold, check: async (user_id) -> bool or sync) ---
 DAILY_QUESTS = [
-    {"id": "sell_one", "name": "List an item", "desc": "List 1 item on the Bazaar", "reward": 100.0},
-    {"id": "open_one", "name": "Crack a crate", "desc": "Open 1 lootbox", "reward": 50.0},
-    {"id": "donate", "name": "Support the guild", "desc": "Donate any amount to the Guild Hall", "reward": 75.0},
-    {"id": "dungeon_run", "name": "Brave the dungeon", "desc": "Complete a dungeon run (Discord)", "reward": 150.0},
+    {"id": "sell_one", "name": "List an item", "desc": "List 1 item on the Bazaar", "reward": 40.0},
+    {"id": "open_one", "name": "Crack a crate", "desc": "Open 1 lootbox", "reward": 20.0},
+    {"id": "donate", "name": "Support the guild", "desc": "Donate any amount to the Guild Hall", "reward": 30.0},
+    {"id": "dungeon_run", "name": "Brave the dungeon", "desc": "Complete a dungeon run (Discord)", "reward": 60.0},
 ]
 
 # --- SET BONUSES (set_name -> {2: {atk: x}, 4: {def: x}, 6: {atk: x, def: x}}) ---
@@ -124,11 +143,27 @@ def _inject_nav_rpg(context):
     except Exception:
         return {"nav_rpg_class": "Fighter", "nav_class_emoji": "⚔️"}
 
+def _realm_prosperity():
+    """Return {label, flavor} for current economy multiplier (for RPG economy feel)."""
+    try:
+        mult = run_async(db.get_economy_multiplier())
+    except Exception:
+        mult = 0.5
+    if mult < 0.5:
+        return {"label": "Struggling", "flavor": "The realm's coffers are thin. Rewards from jobs and dungeons are reduced."}
+    if mult < 0.8:
+        return {"label": "Stable", "flavor": "The realm runs as usual. Payouts are modest but steady."}
+    return {"label": "Prosperous", "flavor": "Times are good. The council has boosted rewards across the realm."}
+
 @app.context_processor
 def inject_nav_context():
     out = {}
     if session.get("user_id"):
         out.update(_inject_nav_rpg({"session": session}))
+    try:
+        out["realm_prosperity"] = _realm_prosperity()
+    except Exception:
+        out["realm_prosperity"] = {"label": "Stable", "flavor": "The realm runs as usual."}
     return out
 
 def broadcast_update(event_type, data):
@@ -341,6 +376,7 @@ def profile(identifier):
         achievements_unlocked=achievements_unlocked,
         set_bonus_lines=set_bonus_lines,
         active_page="profile",
+        **get_location_ambiance("profile"),
     )
 
 # --- MARKET ROUTES ---
@@ -365,6 +401,7 @@ def market():
             npcs=get_npcs_for_page("market"),
             login_streak=0,
             login_streak_reward=None,
+            **get_location_ambiance("market"),
         )
 
     # 2. If they are logged in, proceed as normal
@@ -389,7 +426,7 @@ def market():
         name = str(it.get("item_name") or "")
         it["has_image"] = _lootbox_image_exists(set_name, tier, name)
 
-    return render_template('market.html', items=items, active_page="market", npcs=get_npcs_for_page("market"))
+    return render_template('market.html', items=items, active_page="market", npcs=get_npcs_for_page("market"), **get_location_ambiance("market"))
 
 @app.route('/buy/<int:item_id>', methods=['POST'])
 def buy_item(item_id):
@@ -426,7 +463,7 @@ def inventory():
         name = str(it.get("item_name") or "")
         it["has_image"] = _lootbox_image_exists(set_name, tier, name)
 
-    return render_template('inventory.html', items=items, active_page="inventory")
+    return render_template('inventory.html', items=items, active_page="inventory", **get_location_ambiance("inventory"))
 
 @app.route('/api/sell_item', methods=['POST'])
 def api_sell_item():
@@ -496,7 +533,7 @@ def api_scrap_duplicates():
 def lootbox_page():
     if 'user_id' not in session: return redirect(url_for('login'))
     available_sets = [d for d in os.listdir("lootboxes") if os.path.isdir(os.path.join("lootboxes", d))] if os.path.exists("lootboxes") else []
-    return render_template('lootbox.html', available_sets=available_sets, active_page="lootbox", npcs=get_npcs_for_page("lootbox"))
+    return render_template('lootbox.html', available_sets=available_sets, active_page="lootbox", npcs=get_npcs_for_page("lootbox"), **get_location_ambiance("lootbox"))
 
 def _open_one_box(user_id, set_name, valid_tiers):
     """Roll one item and add to user inventory. Returns (item_dict, None) or (None, error_msg)."""
@@ -588,6 +625,30 @@ def _guild_progress(town):
     progress = min(100.0, 100.0 * treasury / next_gold) if next_gold else 0
     return round(progress, 1), next_gold
 
+def _get_rumors(town, world_boss):
+    """Return list of short 'notice board' / rumor strings for RPG world feel."""
+    out = []
+    if town.get("famine") == 1:
+        out.append("⚠️ Rumor: The guild's stores are low. Donations of food are desperately needed.")
+    try:
+        mult = run_async(db.get_economy_multiplier())
+        if mult >= 0.8:
+            out.append("📜 Notice: The council has declared a season of prosperity. Rewards are boosted.")
+        elif mult < 0.5:
+            out.append("📜 Notice: Times are lean. Job and dungeon payouts are reduced until the realm recovers.")
+    except Exception:
+        pass
+    tax = (town.get("tax_rate") or 0.10) * 100
+    if tax > 12:
+        out.append("📜 Notice: The council has raised taxes to fund the guild. Current rate: {:.0f}%.".format(tax))
+    boss_hp = (world_boss or {}).get("current_hp") or 0
+    boss_max = (world_boss or {}).get("max_hp") or 10000
+    if boss_max and boss_hp / boss_max < 0.2:
+        out.append("🐲 Rumor: The world boss is wounded! Adventurers are rallying for the kill.")
+    if not out:
+        out.append("📜 Notice: All quiet in Polyville. Check the quest board for daily tasks.")
+    return out
+
 @app.route('/town')
 def town_hall():
     town = run_async(db.get_town_state())
@@ -595,7 +656,25 @@ def town_hall():
     town = dict(town)
     town["guild_progress_pct"], town["guild_next_level_gold"] = _guild_progress(town)
     world_boss = run_async(db.get_world_boss()) or {"current_hp": 10000.0, "max_hp": 10000.0}
-    return render_template('town.html', town=town, world_boss=world_boss, active_page="town", npcs=get_npcs_for_page("town"))
+    rumors = _get_rumors(town, world_boss)
+    return render_template('town.html', town=town, world_boss=world_boss, active_page="town", npcs=get_npcs_for_page("town"), rumors=rumors, **get_location_ambiance("town"))
+
+# Flavor messages for "Rest at the Inn" (RPG world interaction)
+REST_AT_INN_MESSAGES = [
+    "You rest by the fire. The innkeeper nods. You feel ready for the road.",
+    "A warm meal and a soft bed. The bustle of the tavern fades. You're rested.",
+    "You raise a tankard with other adventurers. Tales of the dungeon echo in the hall.",
+    "The inn's cat curls on your lap. For a moment, the realm can wait.",
+    "You rest your feet. Tomorrow the Bazaar and the dungeons will still be there.",
+]
+
+@app.route("/api/rest_at_inn", methods=["POST"])
+def api_rest_at_inn():
+    """Return a random flavor message (RPG world interaction). No cost or cooldown."""
+    if "user_id" not in session:
+        return {"success": False, "message": "Not logged in."}, 401
+    msg = random.choice(REST_AT_INN_MESSAGES)
+    return {"success": True, "message": msg}
 
 @app.route("/api/world_boss/damage", methods=["POST"])
 def api_world_boss_damage():
@@ -686,7 +765,7 @@ def exchange():
             'outcomes': outcomes_data
         })
         
-    return render_template('exchange.html', markets=markets_data, active_page="exchange")
+    return render_template('exchange.html', markets=markets_data, active_page="exchange", **get_location_ambiance("exchange"))
 
 
 @app.route('/rpg_stats')
@@ -733,7 +812,7 @@ def rpg_stats_page():
         cls = CLASSES.get(r.get("rpg_class"), CLASSES["Fighter"])
         r["class_emoji"] = cls.get("emoji", "⚔️")
         legends_with_emoji.append(r)
-    return render_template('rpg_stats.html', overall=overall, classes=classes, hall_of_legends=legends_with_emoji, active_page="rpg_stats")
+    return render_template('rpg_stats.html', overall=overall, classes=classes, hall_of_legends=legends_with_emoji, active_page="rpg_stats", **get_location_ambiance("rpg_stats"))
 
 @app.route('/api/buy_shares', methods=['POST'])
 def api_buy_shares():
@@ -771,7 +850,7 @@ def quests_page():
             "completed": bool(prog.get("completed")),
             "claimed": bool(prog.get("claimed")),
         })
-    return render_template("quests.html", quests=quests_with_status, active_page="quests")
+    return render_template("quests.html", quests=quests_with_status, active_page="quests", **get_location_ambiance("quests"))
 
 @app.route("/api/quests/claim", methods=["POST"])
 def api_quests_claim():
@@ -843,7 +922,8 @@ def leaderboard():
                            strongest=strongest,
                            collectors=collectors,
                            top_donors=top_donors,
-                           active_page="leaderboard")
+                           active_page="leaderboard",
+                           **get_location_ambiance("leaderboard"))
 
 # --- CASINO (mirrors cogs/casino.py logic for web) ---
 CASINO_SUITS = {'H': '♥', 'D': '♦', 'C': '♣', 'S': '♠'}
@@ -874,7 +954,7 @@ def _bj_score(hand):
 def casino_page():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    return render_template('casino.html', active_page='casino', npcs=get_npcs_for_page("casino"))
+    return render_template('casino.html', active_page='casino', npcs=get_npcs_for_page("casino"), **get_location_ambiance("casino"))
 
 def _require_casino_user():
     if 'user_id' not in session:

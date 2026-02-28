@@ -13,11 +13,11 @@ async def initialize_db():
         await db.execute('''CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY, 
             username TEXT, 
-            balance REAL DEFAULT 1000.00, 
+            balance REAL DEFAULT 500.00, 
             last_daily DATETIME
         )''')
         # 1. CORE TABLES
-        await db.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 1000.00, last_daily DATETIME)''')
+        await db.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 500.00, last_daily DATETIME)''')
         await db.execute('''CREATE TABLE IF NOT EXISTS markets (
             market_id INTEGER PRIMARY KEY AUTOINCREMENT,
             question TEXT NOT NULL,
@@ -691,21 +691,37 @@ async def buy_market_item(buyer_id, item_id):
         except Exception as e: return False, str(e)
 
 # --- JOBS & TOWN INCOME SYSTEM ---
+ECONOMY_MULTIPLIER_DEFAULT = 0.5  # Global scale for all payouts (jobs, dungeon, casino). Raise for "prosperity" events.
+
+async def get_economy_multiplier():
+    """Return current economy multiplier (for UI / realm prosperity)."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT value FROM system_globals WHERE key = 'economy_multiplier'") as c:
+            row = await c.fetchone()
+        return float(row['value']) if row and row['value'] is not None else ECONOMY_MULTIPLIER_DEFAULT
+
 async def process_town_payout(user_id, amount):
-    """MASTER FUNCTION: Applies town multipliers, famines, and taxes to new currency generation."""
+    """MASTER FUNCTION: Applies economy scale, town multipliers, famines, and taxes to new currency generation."""
     if amount <= 0: return 0.0, 0.0
     
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        async with db.execute("SELECT value FROM system_globals WHERE key = 'economy_multiplier'") as c:
+            row = await c.fetchone()
+        economy_mult = float(row['value']) if row and row['value'] is not None else ECONOMY_MULTIPLIER_DEFAULT
+        if row is None:
+            await db.execute("INSERT OR IGNORE INTO system_globals (key, value) VALUES ('economy_multiplier', ?)", (economy_mult,))
         async with db.execute("SELECT level, tax_rate, famine FROM town WHERE id=1") as cursor:
             town = await cursor.fetchone()
         
         level = town['level'] if town and town['level'] else 1
-        tax_rate = town['tax_rate'] if town and town['tax_rate'] is not None else 0.05
+        tax_rate = town['tax_rate'] if town and town['tax_rate'] is not None else 0.10
         famine = town['famine'] if town and town['famine'] else 0
         
-        multiplier = 1.0 + (level * 0.05)
+        amount = amount * economy_mult
+        multiplier = 1.0 + (level * 0.03)
         if famine == 1:
             multiplier *= 0.5 
             
@@ -740,24 +756,23 @@ async def process_work(user_id, base_payout):
         await db.commit()
         return net_pay, tax_amount
 
-async def process_chat_income(user_id, amount, daily_cap=500.0):
+async def process_chat_income(user_id, amount, daily_cap=200.0):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-        
+        async with db.execute("SELECT value FROM system_globals WHERE key = 'economy_multiplier'") as c:
+            row = await c.fetchone()
+        economy_mult = float(row['value']) if row and row['value'] is not None else ECONOMY_MULTIPLIER_DEFAULT
         async with db.execute("SELECT daily_chat_earnings, last_chat_reset FROM users WHERE user_id = ?", (user_id,)) as cursor:
             user = await cursor.fetchone()
-            
         async with db.execute("SELECT level, famine, tax_rate FROM town WHERE id=1") as cursor:
             town = await cursor.fetchone()
-        
         level = town['level'] if town and town['level'] else 1
         famine = town['famine'] if town and town['famine'] else 0
-        tax_rate = town['tax_rate'] if town and town['tax_rate'] is not None else 0.05
-        
-        multiplier = 1.0 + (level * 0.05)
-        if famine == 1: multiplier *= 0.5 
-        adjusted_amount = amount * multiplier
+        tax_rate = town['tax_rate'] if town and town['tax_rate'] is not None else 0.10
+        multiplier = 1.0 + (level * 0.03)
+        if famine == 1: multiplier *= 0.5
+        adjusted_amount = amount * economy_mult * multiplier
 
         now = datetime.datetime.now()
         earnings = user['daily_chat_earnings'] if user['daily_chat_earnings'] else 0.0
@@ -1225,7 +1240,7 @@ async def record_login_streak(user_id):
                 streak = 1
         except Exception:
             streak = 1
-        reward = min(50.0 + streak * 5.0, 200.0)
+        reward = min(20.0 + streak * 2.0, 80.0)
         await db.execute("UPDATE users SET last_login_at = ?, login_streak = ? WHERE user_id = ?", (now, streak, user_id))
         await db.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (reward, user_id))
         await db.commit()
