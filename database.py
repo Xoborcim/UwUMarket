@@ -112,6 +112,30 @@ async def initialize_db():
             world_boss_hp REAL DEFAULT 10000.0,
             world_boss_max_hp REAL DEFAULT 10000.0
         )''')
+        # Guild wars: head-to-head wars between two guilds
+        await db.execute('''CREATE TABLE IF NOT EXISTS guild_wars (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            challenger_guild_id INTEGER NOT NULL,
+            defender_guild_id INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            accepted_at DATETIME,
+            expires_at DATETIME,
+            challenger_wins INTEGER DEFAULT 0,
+            defender_wins INTEGER DEFAULT 0,
+            winner_guild_id INTEGER,
+            FOREIGN KEY (challenger_guild_id) REFERENCES guilds(id),
+            FOREIGN KEY (defender_guild_id) REFERENCES guilds(id)
+        )''')
+        await db.execute('''CREATE TABLE IF NOT EXISTS guild_war_battles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            war_id INTEGER NOT NULL,
+            attacker_user_id INTEGER NOT NULL,
+            defender_user_id INTEGER NOT NULL,
+            winner_user_id INTEGER,
+            fought_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (war_id) REFERENCES guild_wars(id)
+        )''')
         
         for table, col, dtype in columns:
             try: 
@@ -1320,6 +1344,16 @@ async def get_guild(guild_id):
             row = await c.fetchone()
         return dict(row) if row else None
 
+async def get_guild_by_name(name):
+    """Case-insensitive lookup by guild name. Returns guild dict or None."""
+    if not name or not str(name).strip():
+        return None
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM guilds WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))", (str(name),)) as c:
+            row = await c.fetchone()
+        return dict(row) if row else None
+
 async def get_guild_state(guild_id):
     """Return guild as town-like state (level, treasury, food, tax_rate, famine, user_count, name, leader_id, world_boss)."""
     g = await get_guild(guild_id)
@@ -1378,6 +1412,22 @@ async def leave_guild(user_id):
                 await db.execute("DELETE FROM guilds WHERE id = ?", (gid,))
         await db.commit()
         return True, "Left the guild."
+
+async def join_guild(user_id, guild_id):
+    """User joins an existing guild as a member. Returns (True, None) or (False, error_msg)."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT guild_id FROM users WHERE user_id = ?", (user_id,)) as c:
+            row = await c.fetchone()
+        if row and row["guild_id"] is not None:
+            return False, "You are already in a guild. Leave it first."
+        async with db.execute("SELECT id, name FROM guilds WHERE id = ?", (guild_id,)) as c:
+            guild = await c.fetchone()
+        if not guild:
+            return False, "That guild does not exist."
+        await db.execute("UPDATE users SET guild_id = ?, guild_role = ? WHERE user_id = ?", (guild_id, "member", user_id))
+        await db.commit()
+        return True, f"Joined {guild['name']}!"
 
 async def disband_guild(leader_id):
     """Leader only. Deletes guild and clears everyone's guild_id."""
@@ -1439,3 +1489,160 @@ async def get_top_guilds(limit=10):
             (limit,),
         ) as c:
             return await c.fetchall()
+
+
+# --- GUILD WARS ---
+GUILD_WAR_DURATION_DAYS = 7
+GUILD_WAR_WINS_TO_VICTORY = 10
+GUILD_WAR_WIN_BONUS = 1000.0  # Gold to winning guild treasury
+
+async def create_guild_war(challenger_guild_id, defender_guild_id, challenger_leader_id):
+    """Create a pending war. Only leader of challenger guild. Returns (war_id, None) or (None, error)."""
+    if challenger_guild_id == defender_guild_id:
+        return None, "You cannot declare war on your own guild."
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT leader_id FROM guilds WHERE id = ?", (challenger_guild_id,)) as c:
+            row = await c.fetchone()
+        if not row or row["leader_id"] != challenger_leader_id:
+            return None, "Only your guild leader can declare war."
+        async with db.execute("SELECT id FROM guilds WHERE id = ?", (defender_guild_id,)) as c:
+            if not await c.fetchone():
+                return None, "That guild does not exist."
+        async with db.execute(
+            """SELECT id FROM guild_wars WHERE status IN ('pending', 'active')
+               AND (challenger_guild_id = ? OR defender_guild_id = ? OR challenger_guild_id = ? OR defender_guild_id = ?)""",
+            (challenger_guild_id, challenger_guild_id, defender_guild_id, defender_guild_id),
+        ) as c:
+            if await c.fetchone():
+                return None, "One of these guilds is already in a war."
+        cursor = await db.execute(
+            """INSERT INTO guild_wars (challenger_guild_id, defender_guild_id, status)
+               VALUES (?, ?, 'pending')""",
+            (challenger_guild_id, defender_guild_id),
+        )
+        war_id = cursor.lastrowid
+        await db.commit()
+        return war_id, None
+
+async def get_war_by_id(war_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT w.*, c.name AS challenger_name, d.name AS defender_name
+               FROM guild_wars w
+               JOIN guilds c ON w.challenger_guild_id = c.id
+               JOIN guilds d ON w.defender_guild_id = d.id
+               WHERE w.id = ?""",
+            (war_id,),
+        ) as c:
+            row = await c.fetchone()
+        return dict(row) if row else None
+
+async def get_active_war_for_guild(guild_id):
+    """Return the current active or pending war involving this guild, or None."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT w.*, c.name AS challenger_name, d.name AS defender_name
+               FROM guild_wars w
+               JOIN guilds c ON w.challenger_guild_id = c.id
+               JOIN guilds d ON w.defender_guild_id = d.id
+               WHERE w.status IN ('pending', 'active') AND (w.challenger_guild_id = ? OR w.defender_guild_id = ?)
+               ORDER BY w.id DESC LIMIT 1""",
+            (guild_id, guild_id),
+        ) as c:
+            row = await c.fetchone()
+        return dict(row) if row else None
+
+async def accept_guild_war(war_id, accepter_user_id):
+    """Defender guild leader accepts. Sets status to active and expires_at."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT defender_guild_id, status FROM guild_wars WHERE id = ?", (war_id,)) as c:
+            row = await c.fetchone()
+        if not row:
+            return False, "War not found."
+        if row["status"] != "pending":
+            return False, "This war is no longer pending."
+        async with db.execute("SELECT leader_id FROM guilds WHERE id = ?", (row["defender_guild_id"],)) as c:
+            lead = await c.fetchone()
+        if not lead or lead["leader_id"] != accepter_user_id:
+            return False, "Only the defender guild leader can accept."
+        now = datetime.datetime.now()
+        expires = now + datetime.timedelta(days=GUILD_WAR_DURATION_DAYS)
+        await db.execute(
+            "UPDATE guild_wars SET status = 'active', accepted_at = ?, expires_at = ? WHERE id = ?",
+            (now, expires, war_id),
+        )
+        await db.commit()
+        return True, "War accepted! Battle until " + expires.strftime("%Y-%m-%d") + " or first to " + str(GUILD_WAR_WINS_TO_VICTORY) + " wins."
+
+async def record_guild_war_battle(war_id, attacker_user_id, defender_user_id, winner_user_id):
+    """Record a battle and increment the appropriate guild's win count. Returns (challenger_wins, defender_wins) after update."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT challenger_guild_id, defender_guild_id, challenger_wins, defender_wins, status FROM guild_wars WHERE id = ?", (war_id,)) as c:
+            war = await c.fetchone()
+        if not war or war["status"] != "active":
+            return None, "War is not active."
+        attacker_guild = await get_user_guild_info(attacker_user_id)
+        defender_guild = await get_user_guild_info(defender_user_id)
+        if not attacker_guild or not defender_guild:
+            return None, "Both players must be in a guild."
+        if attacker_guild["guild_id"] != war["challenger_guild_id"] and attacker_guild["guild_id"] != war["defender_guild_id"]:
+            return None, "Attacker is not in this war."
+        if defender_guild["guild_id"] != war["challenger_guild_id"] and defender_guild["guild_id"] != war["defender_guild_id"]:
+            return None, "Defender is not in this war."
+        if attacker_guild["guild_id"] == defender_guild["guild_id"]:
+            return None, "You cannot fight a member of your own guild."
+        await db.execute(
+            "INSERT INTO guild_war_battles (war_id, attacker_user_id, defender_user_id, winner_user_id) VALUES (?, ?, ?, ?)",
+            (war_id, attacker_user_id, defender_user_id, winner_user_id),
+        )
+        challenger_wins = war["challenger_wins"] or 0
+        defender_wins = war["defender_wins"] or 0
+        if winner_user_id == attacker_user_id:
+            if attacker_guild["guild_id"] == war["challenger_guild_id"]:
+                challenger_wins += 1
+            else:
+                defender_wins += 1
+        elif winner_user_id == defender_user_id:
+            if defender_guild["guild_id"] == war["challenger_guild_id"]:
+                challenger_wins += 1
+            else:
+                defender_wins += 1
+        await db.execute(
+            "UPDATE guild_wars SET challenger_wins = ?, defender_wins = ? WHERE id = ?",
+            (challenger_wins, defender_wins, war_id),
+        )
+        winner_guild_id = None
+        if challenger_wins >= GUILD_WAR_WINS_TO_VICTORY:
+            winner_guild_id = war["challenger_guild_id"]
+        elif defender_wins >= GUILD_WAR_WINS_TO_VICTORY:
+            winner_guild_id = war["defender_guild_id"]
+        if winner_guild_id is not None:
+            await db.execute(
+                "UPDATE guild_wars SET status = 'ended', winner_guild_id = ? WHERE id = ?",
+                (winner_guild_id, war_id),
+            )
+            await add_guild_treasury(winner_guild_id, GUILD_WAR_WIN_BONUS)
+        await db.commit()
+        return (challenger_wins, defender_wins), None
+
+async def get_guild_members(guild_id):
+    """Return list of dicts with user_id, username for guild members."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT user_id, username, guild_role FROM users WHERE guild_id = ? ORDER BY guild_role = 'leader' DESC, username",
+            (guild_id,),
+        ) as c:
+            rows = await c.fetchall()
+        return [dict(r) for r in rows]
+
+async def get_other_guild_in_war(war, my_guild_id):
+    """Return the guild_id of the opposing guild in this war."""
+    if war["challenger_guild_id"] == my_guild_id:
+        return war["defender_guild_id"]
+    return war["challenger_guild_id"]

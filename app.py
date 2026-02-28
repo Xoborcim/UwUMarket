@@ -71,6 +71,7 @@ LOCATION_AMBIANCE = {
     "quests": ("Quest Board", "Daily tasks from the guild. Complete them and claim your reward."),
     "rpg_stats": ("RPG Stats", "Records of every adventurer. The Hall of Legends honors the boldest."),
     "profile": ("Adventurer Profile", "Your renown, gear, and deeds. This is your legend."),
+    "guild_wars": ("Guild Wars", "Challenge another guild and fight head-to-head for glory and gold."),
 }
 
 def get_location_ambiance(active_page):
@@ -674,7 +675,11 @@ def town_hall():
         world_boss = run_async(db.get_world_boss()) or {"current_hp": 10000.0, "max_hp": 10000.0}
     town["guild_progress_pct"], town["guild_next_level_gold"] = _guild_progress(town)
     rumors = _get_rumors(town, world_boss)
-    return render_template('town.html', town=town, world_boss=world_boss, guild_info=guild_info, active_page="town", npcs=get_npcs_for_page("town"), rumors=rumors, **get_location_ambiance("town"))
+    joinable_guilds = []
+    if not guild_info:
+        joinable_guilds = run_async(db.get_top_guilds(30))
+        joinable_guilds = [dict(g) for g in joinable_guilds]
+    return render_template('town.html', town=town, world_boss=world_boss, guild_info=guild_info, joinable_guilds=joinable_guilds, active_page="town", npcs=get_npcs_for_page("town"), rumors=rumors, **get_location_ambiance("town"))
 
 # Flavor messages for "Rest at the Inn" (RPG world interaction)
 REST_AT_INN_MESSAGES = [
@@ -776,6 +781,22 @@ def api_guild_create():
     return {"success": True, "message": "Guild created!", "guild_id": guild_id}
 
 
+@app.route('/api/guild/join', methods=['POST'])
+def api_guild_join():
+    if 'user_id' not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    data = request.get_json() or {}
+    guild_id = data.get('guild_id')
+    if guild_id is None:
+        return {"success": False, "message": "Missing guild_id"}, 400
+    try:
+        guild_id = int(guild_id)
+    except (TypeError, ValueError):
+        return {"success": False, "message": "Invalid guild_id"}, 400
+    ok, msg = run_async(db.join_guild(session['user_id'], guild_id))
+    return {"success": ok, "message": msg}
+
+
 @app.route('/api/guild/leave', methods=['POST'])
 def api_guild_leave():
     if 'user_id' not in session:
@@ -790,6 +811,156 @@ def api_guild_disband():
         return {"success": False, "message": "Not logged in"}, 401
     ok, msg = run_async(db.disband_guild(session['user_id']))
     return {"success": ok, "message": msg}
+
+
+# --- GUILD WARS (PvP combat) ---
+def get_player_combat_stats(user_id):
+    """Return hp, max_hp, atk, def for a user (class + shop gear + equipped gear). Used for PvP."""
+    from cogs.rpg import CLASSES, SHOP_GEAR
+    gear_data, class_name = run_async(db.get_rpg_profile(user_id))
+    gear_names = [g.strip() for g in (gear_data.split(",") if gear_data else ["Rusty Dagger"]) if g.strip()]
+    equipped = run_async(db.get_equipped_gear(user_id))
+    equipped_list = [dict(row) for row in equipped] if equipped else []
+    cls = CLASSES.get(class_name, CLASSES["Fighter"])
+    total_atk = total_def = total_int = 0
+    for g in gear_names:
+        item = SHOP_GEAR.get(g, SHOP_GEAR["Rusty Dagger"])
+        total_atk += int(item.get("atk", 0) or 0)
+        total_def += int(item.get("def", 0) or 0)
+        total_int += int(item.get("int", 0) or 0)
+    for it in equipped_list:
+        total_atk += int(it.get("atk_bonus") or 0)
+        total_def += int(it.get("def_bonus") or 0)
+        total_int += int(it.get("int_bonus") or 0)
+    hp = cls["hp"]
+    atk = total_atk + cls["atk_mod"]
+    defense = 5 + total_def + cls["def_mod"]
+    return {"hp": hp, "max_hp": hp, "atk": max(1, atk), "def": max(0, defense)}
+
+def run_pvp_combat(stats_a, stats_b):
+    """Simulate turn-based PvP. A and B take turns attacking. Returns 1 if A wins, 2 if B wins, 0 draw (shouldn't happen)."""
+    import random
+    a_hp, b_hp = float(stats_a["hp"]), float(stats_b["hp"])
+    a_atk, a_def = stats_a["atk"], stats_a["def"]
+    b_atk, b_def = stats_b["atk"], stats_b["def"]
+    while a_hp > 0 and b_hp > 0:
+        dmg_a_to_b = max(1, a_atk - b_def + random.randint(-2, 2))
+        b_hp -= dmg_a_to_b
+        if b_hp <= 0:
+            return 1
+        dmg_b_to_a = max(1, b_atk - a_def + random.randint(-2, 2))
+        a_hp -= dmg_b_to_a
+        if a_hp <= 0:
+            return 2
+    return 1 if a_hp > 0 else 2
+
+
+@app.route('/guild_wars')
+def guild_wars_page():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    guild_info = run_async(db.get_user_guild_info(session["user_id"]))
+    war = run_async(db.get_active_war_for_guild(guild_info["guild_id"])) if guild_info else None
+    enemy_members = []
+    if guild_info and war and war.get("status") == "active":
+        other_guild_id = run_async(db.get_other_guild_in_war(war, guild_info["guild_id"]))
+        enemy_members = run_async(db.get_guild_members(other_guild_id)) if other_guild_id else []
+    all_guilds = run_async(db.get_top_guilds(50))
+    all_guilds = [dict(g) for g in all_guilds]
+    return render_template(
+        "guild_wars.html",
+        guild_info=guild_info,
+        war=war,
+        enemy_members=enemy_members,
+        all_guilds=all_guilds,
+        wins_to_victory=db.GUILD_WAR_WINS_TO_VICTORY,
+        win_bonus=db.GUILD_WAR_WIN_BONUS,
+        active_page="guild_wars",
+        **get_location_ambiance("guild_wars"),
+    )
+
+
+@app.route("/api/guild_war/challenge", methods=["POST"])
+def api_guild_war_challenge():
+    if "user_id" not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    data = request.get_json() or {}
+    defender_guild_id = data.get("defender_guild_id")
+    if not defender_guild_id:
+        return {"success": False, "message": "Missing defender_guild_id"}, 400
+    try:
+        defender_guild_id = int(defender_guild_id)
+    except (TypeError, ValueError):
+        return {"success": False, "message": "Invalid defender_guild_id"}, 400
+    guild_info = run_async(db.get_user_guild_info(session["user_id"]))
+    if not guild_info:
+        return {"success": False, "message": "You must be in a guild to declare war."}
+    war_id, err = run_async(db.create_guild_war(guild_info["guild_id"], defender_guild_id, session["user_id"]))
+    if err:
+        return {"success": False, "message": err}
+    return {"success": True, "message": "War declared! Waiting for the other guild's leader to accept.", "war_id": war_id}
+
+
+@app.route("/api/guild_war/accept", methods=["POST"])
+def api_guild_war_accept():
+    if "user_id" not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    data = request.get_json() or {}
+    war_id = data.get("war_id")
+    if not war_id:
+        return {"success": False, "message": "Missing war_id"}, 400
+    try:
+        war_id = int(war_id)
+    except (TypeError, ValueError):
+        return {"success": False, "message": "Invalid war_id"}, 400
+    ok, msg = run_async(db.accept_guild_war(war_id, session["user_id"]))
+    return {"success": ok, "message": msg}
+
+
+@app.route("/api/guild_war/fight", methods=["POST"])
+def api_guild_war_fight():
+    if "user_id" not in session:
+        return {"success": False, "message": "Not logged in"}, 401
+    data = request.get_json() or {}
+    war_id = data.get("war_id")
+    defender_user_id = data.get("defender_user_id")
+    if not war_id or defender_user_id is None:
+        return {"success": False, "message": "Missing war_id or defender_user_id"}, 400
+    try:
+        war_id = int(war_id)
+        defender_user_id = int(defender_user_id)
+    except (TypeError, ValueError):
+        return {"success": False, "message": "Invalid ids"}, 400
+    attacker_id = session["user_id"]
+    if attacker_id == defender_user_id:
+        return {"success": False, "message": "You cannot fight yourself."}
+    guild_info = run_async(db.get_user_guild_info(attacker_id))
+    if not guild_info:
+        return {"success": False, "message": "You must be in a guild to fight in a guild war."}
+    war = run_async(db.get_war_by_id(war_id))
+    if not war or war.get("status") != "active":
+        return {"success": False, "message": "This war is not active."}
+    defender_guild = run_async(db.get_user_guild_info(defender_user_id))
+    if not defender_guild or defender_guild["guild_id"] not in (war["challenger_guild_id"], war["defender_guild_id"]):
+        return {"success": False, "message": "That player is not in the enemy guild."}
+    if defender_guild["guild_id"] == guild_info["guild_id"]:
+        return {"success": False, "message": "You cannot fight a guildmate."}
+    stats_attacker = get_player_combat_stats(attacker_id)
+    stats_defender = get_player_combat_stats(defender_user_id)
+    winner = run_pvp_combat(stats_attacker, stats_defender)
+    winner_user_id = attacker_id if winner == 1 else defender_user_id
+    result, err = run_async(db.record_guild_war_battle(war_id, attacker_id, defender_user_id, winner_user_id))
+    if err:
+        return {"success": False, "message": err}
+    challenger_wins, defender_wins = result
+    you_won = winner_user_id == attacker_id
+    return {
+        "success": True,
+        "you_won": you_won,
+        "challenger_wins": challenger_wins,
+        "defender_wins": defender_wins,
+        "message": "You won the battle!" if you_won else "You lost the battle.",
+    }
 
 
 # --- BETTING EXCHANGE ROUTES ---

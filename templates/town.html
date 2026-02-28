@@ -281,6 +281,24 @@
                 <button type="button" class="donate-btn" id="create-guild-btn">Create Guild</button>
                 <p id="guild-msg" style="margin-top: 10px; min-height: 1.4em; color: var(--text-muted); font-size: 0.9rem;"></p>
             </div>
+            <div class="action-box" style="margin-top: 16px;">
+                <h3 style="margin-top:0;">📜 Join an Existing Guild</h3>
+                <p style="color: var(--text-muted); margin-bottom: 12px;">Browse guilds and join as a member. You can leave anytime.</p>
+                {% if joinable_guilds %}
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                    <select id="join-guild-select" style="padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 1rem; min-width: 200px;">
+                        <option value="">Choose a guild…</option>
+                        {% for g in joinable_guilds %}
+                        <option value="{{ g.id }}">{{ g.name }} (Lv.{{ g.level or 1 }})</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" class="donate-btn secondary" id="join-guild-btn">Join Guild</button>
+                </div>
+                <p id="join-guild-msg" style="margin-top: 10px; min-height: 1.4em; color: var(--text-muted); font-size: 0.9rem;"></p>
+                {% else %}
+                <p style="color: var(--text-muted); font-size: 0.9rem;">No guilds exist yet. Create the first one above!</p>
+                {% endif %}
+            </div>
             {% endif %}
 
             <div id="notification-banner" style="display: none; padding: 15px; margin-top: 20px; border-radius: 8px; text-align: center; font-weight: bold; color: white;"></div>
@@ -329,6 +347,22 @@
                 const r = await fetch('/api/guild/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name }) });
                 const data = await r.json();
                 if (data.success) { msgEl.textContent = 'Guild created! Reloading...'; setTimeout(() => window.location.reload(), 800); }
+                else { msgEl.textContent = data.message || 'Failed.'; }
+            } catch (e) { msgEl.textContent = 'Request failed.'; }
+            this.disabled = false;
+        });
+
+        document.getElementById('join-guild-btn')?.addEventListener('click', async function() {
+            const select = document.getElementById('join-guild-select');
+            const msgEl = document.getElementById('join-guild-msg');
+            const guildId = select?.value;
+            msgEl.textContent = '';
+            if (!guildId) { msgEl.textContent = 'Choose a guild.'; return; }
+            this.disabled = true;
+            try {
+                const r = await fetch('/api/guild/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guild_id: parseInt(guildId, 10) }) });
+                const data = await r.json();
+                if (data.success) { msgEl.textContent = 'Joined! Reloading...'; setTimeout(() => window.location.reload(), 800); }
                 else { msgEl.textContent = data.message || 'Failed.'; }
             } catch (e) { msgEl.textContent = 'Request failed.'; }
             this.disabled = false;
