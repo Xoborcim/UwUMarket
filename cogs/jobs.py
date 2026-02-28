@@ -10,19 +10,19 @@ import aiosqlite
 # --- JOB DEFINITIONS ---
 JOBS = {
     "Farmer": {
-        "cooldown": 3, "payout": 60.0, "emoji": "🌾", "type": "farmer",
+        "cooldown": 3, "payout": 90.0, "emoji": "🌾", "type": "farmer",
         "desc": "Grow food. If the town starves, EVERYONE'S pay is cut in half!"
     },
     "Miner": {
-        "cooldown": 3, "payout": 60.0, "emoji": "⛏️", "type": "miner",
+        "cooldown": 3, "payout": 90.0, "emoji": "⛏️", "type": "miner",
         "desc": "Mine town materials and personal ores. Don't cause a cave-in!"
     },
     "Builder": {
-        "cooldown": 4, "payout": 120.0, "emoji": "🏗️", "type": "builder",
+        "cooldown": 4, "payout": 180.0, "emoji": "🏗️", "type": "builder",
         "desc": "Earn steady pay. Perk: Use /career upgrade to level up the town!"
     },
     "Blacksmith": {
-        "cooldown": 4, "payout": 100.0, "emoji": "🔨", "type": "blacksmith",
+        "cooldown": 4, "payout": 150.0, "emoji": "🔨", "type": "blacksmith",
         "desc": "Earn steady pay. Perk: Use /career craft to forge RPG weapons!"
     },
     "Hacker": {
@@ -30,7 +30,7 @@ JOBS = {
         "desc": "Hack mainframes. Perk: Use /career hack to steal from players!"
     },
     "Politician": {
-        "cooldown": 6, "payout": 160.0, "emoji": "🏛️", "type": "politician",
+        "cooldown": 6, "payout": 240.0, "emoji": "🏛️", "type": "politician",
         "desc": "Earn steady pay. Perk: Use /career set_tax or /career embezzle!"
     }
 }
@@ -368,7 +368,7 @@ class HackerGame(discord.ui.View):
             self.clear_items()
             
             if word == self.target:
-                payout = random.randint(240, 480)
+                payout = random.randint(360, 720)
                 net, tax = await db.process_work(self.user.id, payout) # Added Await!
                 embed = discord.Embed(title="💻 Access Granted", description=f"Firewall bypassed! You stole **${net:,.2f}**.\n*(Laundered Tax: ${tax:,.2f})*", color=0x2ecc71)
             else:

@@ -170,10 +170,10 @@
 {% block content %}
     <div class="page-header">
         <div>
-            <div class="page-title">Town Hall</div>
-            <div class="page-subtitle">Shape the shared city economy and keep famine at bay.</div>
+            <div class="page-title">{% if guild_info %}Guild Hall{% else %}Town Hall{% endif %}</div>
+            <div class="page-subtitle">{% if guild_info %}Your guild's hall — manage treasury and the world boss.{% else %}Shape the shared city economy and keep famine at bay.{% endif %}</div>
         </div>
-        <div class="pill">🏛️ Polyville</div>
+        <div class="pill">🏛️ {{ guild_info.guild_name if guild_info else 'Polyville' }}</div>
     </div>
 
     {% include '_npc_section.html' with context %}
@@ -187,7 +187,7 @@
             {% endif %}
 
             <div class="town-header guild-header">
-                <h2 style="font-size: 2.1rem; margin: 0; color: var(--accent-color);">Your Guild — Polyville</h2>
+                <h2 style="font-size: 2.1rem; margin: 0; color: var(--accent-color);">Your Guild — {{ guild_info.guild_name if guild_info else 'Polyville' }}</h2>
                 <p style="color: var(--text-muted); font-size: 1rem; margin-top: 8px;">
                     Guild Level {{ town['level'] }} • Population {{ town['user_count'] }}
                 </p>
@@ -257,12 +257,31 @@
             </div>
 
             <div class="action-box">
-                <h3 style="margin-top:0;">Support Your Town</h3>
-                <p style="color: var(--text-muted); margin-bottom: 18px;">High-level towns boost everyone’s jobs and dungeon rewards.</p>
+                <h3 style="margin-top:0;">Support {{ guild_info.guild_name if guild_info else 'Your Town' }}</h3>
+                <p style="color: var(--text-muted); margin-bottom: 18px;">{% if guild_info %}Donate to your guild's treasury and food supply.{% else %}High-level towns boost everyone’s jobs and dungeon rewards.{% endif %}</p>
                 
                 <button class="donate-btn" onclick="openDonateModal('gold')">💰 Donate Gold</button>
                 <button class="donate-btn secondary" onclick="openDonateModal('food')">🍞 Buy Food ($10/ea)</button>
             </div>
+
+            {% if guild_info %}
+            <div class="action-box" style="margin-top: 20px;">
+                <h3 style="margin-top:0;">⚔️ Guild Management</h3>
+                <p style="color: var(--text-muted); margin-bottom: 12px;">{% if guild_info.guild_role == 'leader' %}You are the leader. You can disband the guild.{% else %}Leave the guild to join another or create your own.{% endif %}</p>
+                {% if guild_info.guild_role == 'leader' %}
+                <button type="button" class="donate-btn" id="disband-guild-btn" style="background: #b91c1c;">Disband Guild</button>
+                {% endif %}
+                <button type="button" class="donate-btn secondary" id="leave-guild-btn">Leave Guild</button>
+            </div>
+            {% else %}
+            <div class="action-box" style="margin-top: 20px;">
+                <h3 style="margin-top:0;">🏰 Create Your Own Guild</h3>
+                <p style="color: var(--text-muted); margin-bottom: 12px;">Start a guild to get your own guild hall, treasury, and world boss.</p>
+                <input type="text" id="new-guild-name" placeholder="Guild name (2–32 chars)" maxlength="32" style="width: 220px; padding: 10px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; color: white; margin-right: 8px;">
+                <button type="button" class="donate-btn" id="create-guild-btn">Create Guild</button>
+                <p id="guild-msg" style="margin-top: 10px; min-height: 1.4em; color: var(--text-muted); font-size: 0.9rem;"></p>
+            </div>
+            {% endif %}
 
             <div id="notification-banner" style="display: none; padding: 15px; margin-top: 20px; border-radius: 8px; text-align: center; font-weight: bold; color: white;"></div>
         </div>
@@ -298,6 +317,46 @@
         }
         fetchLiveGold();
         setInterval(fetchLiveGold, 10000);
+
+        document.getElementById('create-guild-btn')?.addEventListener('click', async function() {
+            const nameEl = document.getElementById('new-guild-name');
+            const msgEl = document.getElementById('guild-msg');
+            const name = (nameEl?.value || '').trim();
+            msgEl.textContent = '';
+            if (!name) { msgEl.textContent = 'Enter a guild name.'; return; }
+            this.disabled = true;
+            try {
+                const r = await fetch('/api/guild/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name }) });
+                const data = await r.json();
+                if (data.success) { msgEl.textContent = 'Guild created! Reloading...'; setTimeout(() => window.location.reload(), 800); }
+                else { msgEl.textContent = data.message || 'Failed.'; }
+            } catch (e) { msgEl.textContent = 'Request failed.'; }
+            this.disabled = false;
+        });
+        document.getElementById('leave-guild-btn')?.addEventListener('click', async function() {
+            if (!confirm('Leave this guild? You can join or create another later.')) return;
+            const btn = this;
+            btn.disabled = true;
+            try {
+                const r = await fetch('/api/guild/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                const data = await r.json();
+                if (data.success) { setTimeout(() => window.location.reload(), 300); }
+                else { alert(data.message || 'Failed.'); }
+            } catch (e) { alert('Request failed.'); }
+            btn.disabled = false;
+        });
+        document.getElementById('disband-guild-btn')?.addEventListener('click', async function() {
+            if (!confirm('Disband the guild permanently? All members will be removed and the guild hall will be gone.')) return;
+            const btn = this;
+            btn.disabled = true;
+            try {
+                const r = await fetch('/api/guild/disband', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                const data = await r.json();
+                if (data.success) { setTimeout(() => window.location.reload(), 300); }
+                else { alert(data.message || 'Failed.'); }
+            } catch (e) { alert('Request failed.'); }
+            btn.disabled = false;
+        });
 
         document.getElementById('rest-at-inn-btn')?.addEventListener('click', async function() {
             const btn = this;

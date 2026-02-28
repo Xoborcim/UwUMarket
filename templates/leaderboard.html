@@ -120,6 +120,17 @@
                     </a>
                     {% endfor %}
                 </div>
+
+                <div class="leader-section">
+                    <div class="section-title">🏰 Top Guilds</div>
+                    {% for guild in top_guilds or [] %}
+                    <div class="entry" style="cursor: default; pointer-events: none;">
+                        <span class="rank rank-{{ loop.index if loop.index <= 3 else 'other' }}">#{{ loop.index }}</span>
+                        <span class="name">{{ guild['name'] }}</span>
+                        <span class="value">Lv.{{ guild['level'] or 1 }} · ${{ "{:,.0f}".format(guild['treasury'] or 0) }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
             </div>
         </div>
     </div>
