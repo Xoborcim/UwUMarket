@@ -146,6 +146,22 @@ class Utilities(commands.Cog, name="Utilities"):
         )
         await ctx.send(embed=embed)
 
+    @commands.command(name="remove_money", help="Server Owner Only: Remove money from a user's balance.")
+    async def remove_money(self, ctx: commands.Context, target: discord.Member, amount: float):
+        if ctx.author.id != ctx.guild.owner_id:
+            return await ctx.send("❌ Nice try! Only the Server Owner can use this command.")
+        if amount <= 0:
+            return await ctx.send("❌ You must specify an amount greater than $0.")
+        success = await db.update_balance(target.id, -amount)
+        if not success:
+            return await ctx.send(f"❌ Could not remove **${amount:,.2f}** from {target.mention}. They may not have enough balance (or no account yet).")
+        embed = discord.Embed(
+            title="🏦 Balance Deduction",
+            description=f"The Server Owner has removed **${amount:,.2f}** from {target.mention}'s balance.",
+            color=0xe74c3c
+        )
+        await ctx.send(embed=embed)
+
     @commands.command(name="ping", help="Check bot latency")
     async def ping(self, ctx: commands.Context):
         """Latency check."""
