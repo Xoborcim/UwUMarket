@@ -66,10 +66,10 @@
 {% endblock %}
 
 {% block content %}
-    <div class="page-header">
+            <div class="page-header">
         <div>
             <div class="page-title">Hall of Fame</div>
-            <div class="page-subtitle">Track the richest citizens, the strongest climbers, and the biggest collectors.</div>
+            <div class="page-subtitle">Richest adventurers, top climbers by dungeon floor, and the realm's biggest collectors.</div>
         </div>
         <div class="pill">🏆 Leaderboard</div>
     </div>
@@ -78,7 +78,7 @@
         <div class="leader-container">
             <div class="leader-grid">
                 <div class="leader-section">
-                    <div class="section-title">💰 Richest Citizens</div>
+                    <div class="section-title">💰 Richest Adventurers</div>
                     {% for user in richest %}
                     <a href="/profile/{{ user['username'] or user['user_id'] }}" class="entry">
                         <span class="rank rank-{{ loop.index if loop.index <= 3 else 'other' }}">#{{ loop.index }}</span>
@@ -89,7 +89,7 @@
                 </div>
 
                 <div class="leader-section">
-                    <div class="section-title">⚔️ Top Climbers</div>
+                    <div class="section-title">⚔️ By Dungeon Floor</div>
                     {% for user in strongest %}
                     <a href="/profile/{{ user['username'] or user['user_id'] }}" class="entry">
                         <span class="rank rank-{{ loop.index if loop.index <= 3 else 'other' }}">#{{ loop.index }}</span>
@@ -106,6 +106,17 @@
                         <span class="rank rank-{{ loop.index if loop.index <= 3 else 'other' }}">#{{ loop.index }}</span>
                         <span class="name">{{ user['username'] or user['user_id'] }}</span>
                         <span class="value">{{ user['item_count'] }} Items</span>
+                    </a>
+                    {% endfor %}
+                </div>
+
+                <div class="leader-section">
+                    <div class="section-title">🏛️ Top Donors to the Guild</div>
+                    {% for user in top_donors or [] %}
+                    <a href="/profile/{{ user['username'] or user['user_id'] }}" class="entry">
+                        <span class="rank rank-{{ loop.index if loop.index <= 3 else 'other' }}">#{{ loop.index }}</span>
+                        <span class="name">{{ user['username'] or user['user_id'] }}</span>
+                        <span class="value">${{ "{:,.2f}".format(user['total_donated_gold'] or 0) }}</span>
                     </a>
                     {% endfor %}
                 </div>

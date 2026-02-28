@@ -313,6 +313,7 @@
 
         @media (max-width: 480px) {
             .user-pill span.separator { display: none; }
+            .user-pill span.nav-class { display: none; }
         }
 
         /* --- INTERACTABLE NPCs --- */
@@ -419,16 +420,19 @@
                 <a href="/inventory" class="{% if active_page == 'inventory' %}active{% endif %}">Inventory</a>
                 <a href="/lootbox" class="{% if active_page == 'lootbox' %}active{% endif %}">Lootboxes</a>
                 <a href="/rpg_stats" class="{% if active_page == 'rpg_stats' %}active{% endif %}">RPG Stats</a>
-                <a href="/casino" class="{% if active_page == 'casino' %}active{% endif %}">Casino</a>
-                <a href="/town" class="{% if active_page == 'town' %}active{% endif %}">Town Hall</a>
+                <a href="/casino" class="{% if active_page == 'casino' %}active{% endif %}">Tavern Games</a>
+                <a href="/town" class="{% if active_page == 'town' %}active{% endif %}">Guild Hall</a>
                 <a href="/exchange" class="{% if active_page == 'exchange' %}active{% endif %}">Exchange</a>
                 <a href="/leaderboard" class="{% if active_page == 'leaderboard' %}active{% endif %}">Leaderboard</a>
+                <a href="/quests" class="{% if active_page == 'quests' %}active{% endif %}">Quests</a>
             </div>
         </div>
         <div class="user-status">
             {% if session.get('user_id') %}
                 <a href="/profile/{{ session['user_id'] }}" class="user-pill">
                     <span>👤 <strong>{{ session['username'] }}</strong></span>
+                    <span class="separator">|</span>
+                    <span class="nav-class">{{ nav_class_emoji|default('⚔️') }} {{ nav_rpg_class|default('Fighter') }}</span>
                     <span class="separator">|</span>
                     <span id="gold-counter">💰 Loading...</span>
                 </a>
@@ -444,7 +448,7 @@
     </div>
 
     <footer>
-        <span>Polyville — Trade, dungeon, thrive.</span>
+        <span>Polyville — a city of adventurers. Trade at the Bazaar, brave the dungeons in Discord, and grow your legend.</span>
         <span><a href="/market">Bazaar</a> · v1.0</span>
     </footer>
 

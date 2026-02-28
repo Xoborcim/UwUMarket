@@ -61,6 +61,30 @@
             font-size: 1.6rem;
             font-weight: 800;
         }
+        .guild-tagline {
+            font-style: italic;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 6px;
+        }
+        .guild-level-bar-wrap { max-width: 320px; margin-left: auto; margin-right: auto; }
+        .guild-level-bar {
+            height: 10px;
+            background: rgba(31, 41, 55, 0.9);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .guild-level-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-color), #a855f7);
+            border-radius: 999px;
+            transition: width 0.4s ease;
+        }
+        .guild-level-hint {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
         .action-box {
             margin-top: 26px;
             background: rgba(8, 14, 36, 0.95);
@@ -162,11 +186,18 @@
             </div>
             {% endif %}
 
-            <div class="town-header">
-                <h2 style="font-size: 2.1rem; margin: 0; color: var(--accent-color);">Town of Polyville</h2>
+            <div class="town-header guild-header">
+                <h2 style="font-size: 2.1rem; margin: 0; color: var(--accent-color);">Your Guild — Polyville</h2>
                 <p style="color: var(--text-muted); font-size: 1rem; margin-top: 8px;">
-                    Level {{ town['level'] }} • Population {{ town['user_count'] }}
+                    Guild Level {{ town['level'] }} • Population {{ town['user_count'] }}
                 </p>
+                <p class="guild-tagline">Your contributions strengthen the realm.</p>
+                <div class="guild-level-bar-wrap" style="margin-top: 14px;">
+                    <div class="guild-level-bar" role="progressbar" aria-valuenow="{{ town.get('guild_progress_pct', 0) }}" aria-valuemin="0" aria-valuemax="100">
+                        <div class="guild-level-fill" style="width: {{ town.get('guild_progress_pct', 0) }}%;"></div>
+                    </div>
+                    <div class="guild-level-hint">Progress toward next guild level (treasury)</div>
+                </div>
             </div>
 
             <div class="stats-grid">
@@ -182,6 +213,22 @@
                     <div class="stat-label">Income Tax Rate</div>
                     <div class="stat-value">{{ (town['tax_rate'] * 100) | int }}%</div>
                 </div>
+            </div>
+
+            <div class="action-box" style="margin-top: 20px;">
+                <h3 style="margin-top:0;">🐲 World Boss</h3>
+                <p style="color: var(--text-muted); margin-bottom: 10px;">Spend gold to deal damage. When the boss falls, it respawns at full HP.</p>
+                <div class="guild-level-bar-wrap" style="max-width: 100%; margin: 0 0 12px 0;">
+                    <div class="guild-level-bar" style="height: 14px;">
+                        <div class="guild-level-fill" id="boss-hp-fill" style="width: {{ 100 * (world_boss.current_hp / world_boss.max_hp) if world_boss and world_boss.max_hp else 100 }}%;"></div>
+                    </div>
+                    <div class="guild-level-hint" id="boss-hp-text">HP: {{ "{:,.0f}".format(world_boss.current_hp or 0) }} / {{ "{:,.0f}".format(world_boss.max_hp or 10000) }}</div>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center;">
+                    <input type="number" id="boss-gold" min="100" step="100" value="1000" style="width: 140px; padding: 10px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; color: white;">
+                    <button type="button" class="donate-btn" id="boss-attack-btn" style="background: #dc2626;">Attack</button>
+                </div>
+                <div id="boss-err" style="margin-top: 8px; min-height: 20px; color: #fca5a5;"></div>
             </div>
 
             <div class="action-box">
@@ -226,6 +273,28 @@
         }
         fetchLiveGold();
         setInterval(fetchLiveGold, 10000);
+
+        const maxBossHp = {{ world_boss.max_hp or 10000 }};
+        document.getElementById('boss-attack-btn')?.addEventListener('click', async function() {
+            const gold = parseFloat(document.getElementById('boss-gold').value) || 0;
+            const errEl = document.getElementById('boss-err');
+            errEl.textContent = '';
+            if (gold < 100) { errEl.textContent = 'Minimum $100 (10 damage).'; return; }
+            this.disabled = true;
+            try {
+                const r = await fetch('/api/world_boss/damage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gold: gold }) });
+                const data = await r.json();
+                if (data.success) {
+                    const pct = 100 * data.new_hp / maxBossHp;
+                    document.getElementById('boss-hp-fill').style.width = pct + '%';
+                    document.getElementById('boss-hp-text').textContent = 'HP: ' + Math.round(data.new_hp).toLocaleString() + ' / ' + maxBossHp.toLocaleString();
+                    fetchLiveGold();
+                } else {
+                    errEl.textContent = data.error || 'Failed';
+                }
+            } catch (e) { errEl.textContent = 'Request failed.'; }
+            this.disabled = false;
+        });
 
         function openDonateModal(type) {
             document.getElementById('donate-type').value = type;

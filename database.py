@@ -89,6 +89,11 @@ async def initialize_db():
             ("inventory", "int_bonus", "INTEGER DEFAULT 0"),
             ("inventory", "is_equipped", "INTEGER DEFAULT 0"),
             ("inventory", "head_owner_id", "INTEGER"),
+            ("users", "total_donated_gold", "REAL DEFAULT 0.0"),
+            ("users", "last_rpg_run_floor", "INTEGER"),
+            ("users", "last_rpg_run_at", "DATETIME"),
+            ("users", "last_login_at", "DATETIME"),
+            ("users", "login_streak", "INTEGER DEFAULT 0"),
         ]
         
         for table, col, dtype in columns:
@@ -110,6 +115,27 @@ async def initialize_db():
             party_classes TEXT,
             killer_enemy TEXT
         )''')
+        await db.execute('''CREATE TABLE IF NOT EXISTS user_achievements (
+            user_id INTEGER,
+            achievement_id TEXT,
+            unlocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, achievement_id)
+        )''')
+        await db.execute('''CREATE TABLE IF NOT EXISTS daily_quest_progress (
+            user_id INTEGER,
+            quest_id TEXT,
+            date TEXT,
+            completed INTEGER DEFAULT 0,
+            claimed INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, quest_id, date)
+        )''')
+        await db.execute('''CREATE TABLE IF NOT EXISTS world_boss (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            current_hp REAL DEFAULT 10000.0,
+            max_hp REAL DEFAULT 10000.0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )''')
+        await db.execute("INSERT OR IGNORE INTO world_boss (id, current_hp, max_hp) VALUES (1, 10000.0, 10000.0)")
         await db.commit()
 
 
@@ -987,16 +1013,19 @@ async def log_rpg_run(floor, outcome, gold, party_data, killer=None):
             (floor, outcome, gold, len(party_data), classes, killer)
         )
         
+        now = datetime.datetime.now()
         for p in party_data:
             uid = p['user'].id
             await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (uid,))
             async with db.execute("SELECT max_floor FROM users WHERE user_id = ?", (uid,)) as cursor:
                 user_row = await cursor.fetchone()
                 current_max = user_row['max_floor'] if user_row and user_row['max_floor'] else 0
-                
             if floor > current_max:
                 await db.execute("UPDATE users SET max_floor = ? WHERE user_id = ?", (floor, uid))
-                
+            try:
+                await db.execute("UPDATE users SET last_rpg_run_floor = ?, last_rpg_run_at = ? WHERE user_id = ?", (floor, now, uid))
+            except Exception:
+                pass
         await db.commit()
         
 async def get_rpg_leaderboard(limit=10):
@@ -1082,3 +1111,142 @@ async def execute_player(user_id, penalty_fraction=0.50):
         await db.execute("UPDATE town SET treasury = COALESCE(treasury, 0.0) + ? WHERE id=1", (seized_funds,))
         await db.commit()
         return seized_funds
+
+
+# --- DONATIONS (Top Donors) ---
+async def record_donation(user_id, amount):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        await db.execute("UPDATE users SET total_donated_gold = COALESCE(total_donated_gold, 0) + ? WHERE user_id = ?", (amount, user_id))
+        await db.commit()
+
+async def get_user_total_donated(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT total_donated_gold FROM users WHERE user_id = ?", (user_id,)) as c:
+            row = await c.fetchone()
+        return float(row["total_donated_gold"] or 0) if row else 0.0
+
+async def get_top_donors(limit=10):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT user_id, username, total_donated_gold FROM users WHERE COALESCE(total_donated_gold, 0) > 0 ORDER BY total_donated_gold DESC LIMIT ?",
+            (limit,)
+        ) as c:
+            return await c.fetchall()
+
+
+# --- ACHIEVEMENTS ---
+async def get_user_achievements(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT achievement_id, unlocked_at FROM user_achievements WHERE user_id = ?", (user_id,)) as c:
+            return await c.fetchall()
+
+async def unlock_achievement(user_id, achievement_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO user_achievements (user_id, achievement_id) VALUES (?, ?)",
+            (user_id, achievement_id)
+        )
+        await db.commit()
+
+
+# --- DAILY QUESTS ---
+async def get_daily_quest_progress(user_id, date_str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT quest_id, completed, claimed FROM daily_quest_progress WHERE user_id = ? AND date = ?",
+            (user_id, date_str)
+        ) as c:
+            return {r["quest_id"]: dict(r) for r in await c.fetchall()}
+
+async def set_quest_completed(user_id, quest_id, date_str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT INTO daily_quest_progress (user_id, quest_id, date, completed) VALUES (?, ?, ?, 1) ON CONFLICT(user_id, quest_id, date) DO UPDATE SET completed = 1",
+            (user_id, quest_id, date_str)
+        )
+        await db.commit()
+
+async def get_daily_quest_progress_for_date(user_id, date_str):
+    """Returns list of {quest_id, completed, claimed} for all quests for that date."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT quest_id, completed, claimed FROM daily_quest_progress WHERE user_id = ? AND date = ?",
+            (user_id, date_str)
+        ) as c:
+            return [dict(r) for r in await c.fetchall()]
+
+async def claim_quest_reward(user_id, quest_id, date_str, gold_reward):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT completed, claimed FROM daily_quest_progress WHERE user_id = ? AND quest_id = ? AND date = ?",
+            (user_id, quest_id, date_str)
+        ) as c:
+            row = await c.fetchone()
+        if not row or not row["completed"] or row["claimed"]:
+            return False
+        await db.execute("UPDATE daily_quest_progress SET claimed = 1 WHERE user_id = ? AND quest_id = ? AND date = ?", (user_id, quest_id, date_str))
+        await db.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (gold_reward, user_id))
+        await db.commit()
+        return True
+
+
+# --- LOGIN STREAK ---
+async def record_login_streak(user_id):
+    """Returns (new_streak, gold_reward). Call on page load or daily."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        now = datetime.datetime.now()
+        today = now.date().isoformat()
+        async with db.execute("SELECT last_login_at, login_streak FROM users WHERE user_id = ?", (user_id,)) as c:
+            row = await c.fetchone()
+        last = row["last_login_at"] if row and row["last_login_at"] else None
+        last_date = (last.date().isoformat() if hasattr(last, "date") else (str(last)[:10] if last else None))
+        streak = int(row["login_streak"] or 0)
+        if last_date == today:
+            await db.execute("UPDATE users SET last_login_at = ? WHERE user_id = ?", (now, user_id))
+            await db.commit()
+            return streak, 0.0
+        try:
+            last_d = datetime.date.fromisoformat(last_date) if last_date else None
+            if last_d and (now.date() - last_d).days == 1:
+                streak += 1
+            else:
+                streak = 1
+        except Exception:
+            streak = 1
+        reward = min(50.0 + streak * 5.0, 200.0)
+        await db.execute("UPDATE users SET last_login_at = ?, login_streak = ? WHERE user_id = ?", (now, streak, user_id))
+        await db.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (reward, user_id))
+        await db.commit()
+        return streak, reward
+
+
+# --- WORLD BOSS ---
+async def get_world_boss():
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT current_hp, max_hp, updated_at FROM world_boss WHERE id = 1") as c:
+            row = await c.fetchone()
+        return dict(row) if row else {"current_hp": 10000.0, "max_hp": 10000.0, "updated_at": None}
+
+async def deal_world_boss_damage(amount):
+    """Returns new current_hp. Resets to max_hp when <= 0."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT current_hp, max_hp FROM world_boss WHERE id = 1") as c:
+            row = await c.fetchone()
+        if not row:
+            return 10000.0
+        new_hp = max(0.0, (row["current_hp"] or 10000.0) - amount)
+        if new_hp <= 0:
+            new_hp = row["max_hp"] or 10000.0
+        await db.execute("UPDATE world_boss SET current_hp = ?, updated_at = ? WHERE id = 1", (new_hp, datetime.datetime.now()))
+        await db.commit()
+        return new_hp
