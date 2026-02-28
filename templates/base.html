@@ -314,6 +314,97 @@
         @media (max-width: 480px) {
             .user-pill span.separator { display: none; }
         }
+
+        /* --- INTERACTABLE NPCs --- */
+        .npc-area { margin-bottom: 22px; }
+        .npc-area-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+        .npc-strip {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .npc-card {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 18px;
+            background: rgba(8, 14, 36, 0.95);
+            border: 1px solid rgba(55, 65, 81, 0.8);
+            border-radius: 14px;
+            color: var(--text-main);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+        }
+        .npc-card:hover {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 20px rgba(255, 75, 139, 0.2);
+            transform: translateY(-1px);
+        }
+        .npc-avatar { font-size: 1.8rem; line-height: 1; }
+        .npc-name { white-space: nowrap; }
+        .npc-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .npc-modal {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+        }
+        .npc-modal-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 18px 20px;
+            border-bottom: 1px solid rgba(31, 41, 55, 0.9);
+        }
+        .npc-modal-avatar { font-size: 2.2rem; }
+        .npc-modal-title { margin: 0; font-size: 1.25rem; flex: 1; }
+        .npc-modal-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+        }
+        .npc-modal-close:hover { color: var(--text-main); }
+        .npc-modal-body { padding: 20px; }
+        .npc-modal-dialogue {
+            margin: 0 0 16px 0;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+        .npc-modal-action {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 20px;
+            background: var(--accent-color);
+            color: white;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: opacity 0.2s, transform 0.15s;
+        }
+        .npc-modal-action:hover { opacity: 0.9; transform: scale(1.02); }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
@@ -324,7 +415,7 @@
             <a href="/market" class="logo">Polyville</a>
             <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Open menu">☰</button>
             <div class="nav-links">
-                <a href="/market" class="{% if active_page == 'market' %}active{% endif %}">Market</a>
+                <a href="/market" class="{% if active_page == 'market' %}active{% endif %}">Bazaar</a>
                 <a href="/inventory" class="{% if active_page == 'inventory' %}active{% endif %}">Inventory</a>
                 <a href="/lootbox" class="{% if active_page == 'lootbox' %}active{% endif %}">Lootboxes</a>
                 <a href="/rpg_stats" class="{% if active_page == 'rpg_stats' %}active{% endif %}">RPG Stats</a>
@@ -353,8 +444,8 @@
     </div>
 
     <footer>
-        <span>Polyville RPG & Economy</span>
-        <span><a href="/market">Home</a> · v1.0</span>
+        <span>Polyville — Trade, dungeon, thrive.</span>
+        <span><a href="/market">Bazaar</a> · v1.0</span>
     </footer>
 
     <script>

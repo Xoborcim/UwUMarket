@@ -34,6 +34,30 @@ SCRAP_VALUES = {
     "Epic": 150.0, "Legendary": 500.0, "Mythic": 2000.0
 }
 
+# --- INTERACTABLE NPCs (MMO-RPG flavor) ---
+# Each NPC: id, name, emoji, dialogue (list of lines), action (optional {label, url})
+NPCS_BY_PAGE = {
+    "market": [
+        {"id": "merchant", "name": "The Merchant", "emoji": "🧙", "dialogue": ["Adventurers trade here daily. List your wares from the Inventory, or buy what others offer.", "Gold makes the realm go round. Spend wisely."], "action": {"label": "Open Inventory", "url": "/inventory"}},
+        {"id": "guard", "name": "Bazaar Guard", "emoji": "🛡️", "dialogue": ["I keep the peace. No pickpockets on my watch.", "If you see something suspicious, report it to the Council."], "action": None},
+    ],
+    "town": [
+        {"id": "mayor", "name": "Council Elder", "emoji": "🏛️", "dialogue": ["Donations to the treasury strengthen the whole realm. We remember our benefactors.", "Food stocks keep the city safe. Consider buying supplies for the guild."], "action": None},
+        {"id": "innkeeper", "name": "Innkeeper", "emoji": "🍺", "dialogue": ["Rest here before you head into the dungeons. The tavern games are downstairs if you're feeling lucky.", "Many an adventurer has left gold at the tables. Don't say I didn't warn you."], "action": {"label": "Tavern Games", "url": "/casino"}},
+    ],
+    "lootbox": [
+        {"id": "crate_keeper", "name": "Crate Keeper", "emoji": "📦", "dialogue": ["Crates from across the realm. Crack one open — you might find legendary gear.", "Luck favors the bold. Or the well-funded. Your call."], "action": None},
+        {"id": "collector", "name": "The Collector", "emoji": "👁️", "dialogue": ["I've seen Mythics pulled in this very room. Could be you next.", "Different sets, different loot. Choose your crate and take the plunge."], "action": None},
+    ],
+    "casino": [
+        {"id": "dealer", "name": "House Dealer", "emoji": "🎲", "dialogue": ["Welcome to the tables. Slots, roulette, blackjack — pick your poison.", "The house always has a seat. Bet within your means, adventurer."], "action": None},
+        {"id": "drunk", "name": "Tipsy Adventurer", "emoji": "🫃", "dialogue": ["*hic* I lost my shirt on Plinko. Still fun though.", "Don't be like me. Set a limit. *stumbles*"], "action": None},
+    ],
+}
+
+def get_npcs_for_page(page_key):
+    return NPCS_BY_PAGE.get(page_key, [])
+
 # --- HELPER FUNCTIONS ---
 
 def run_async(coro):
@@ -231,12 +255,14 @@ def profile(identifier):
         avatar_url = f"https://cdn.discordapp.com/avatars/{player['user_id']}/{avatar_hash}.png?size=256"
     
     # Render the page with the found player data, equipped gear, and derived stats
+    class_emoji = base_cls.get("emoji", "⚔️")
     return render_template(
         'profile.html',
         player=player,
         equipped_gear=equipped_list,
         rpg_stats=rpg_stats,
         avatar_url=avatar_url,
+        class_emoji=class_emoji,
         active_page="profile",
     )
 
@@ -253,6 +279,7 @@ def market():
             message="Please login with Discord to view the Marketplace.",
             success=False,
             active_page="market",
+            npcs=get_npcs_for_page("market"),
         )
 
     # 2. If they are logged in, proceed as normal
@@ -277,7 +304,7 @@ def market():
         name = str(it.get("item_name") or "")
         it["has_image"] = _lootbox_image_exists(set_name, tier, name)
 
-    return render_template('market.html', items=items, active_page="market")
+    return render_template('market.html', items=items, active_page="market", npcs=get_npcs_for_page("market"))
 
 @app.route('/buy/<int:item_id>', methods=['POST'])
 def buy_item(item_id):
@@ -288,7 +315,7 @@ def buy_item(item_id):
         # Notify browsers to remove the item from their lists without refreshing
         broadcast_update('item_sold', {'item_id': item_id, 'buyer': session['username']})
         
-    return render_template('market.html', items=run_async(get_market_listings()), message=message, success=success, active_page="market")
+    return render_template('market.html', items=run_async(get_market_listings()), message=message, success=success, active_page="market", npcs=get_npcs_for_page("market"))
 
 # --- INVENTORY ROUTES ---
 
@@ -384,7 +411,7 @@ def api_scrap_duplicates():
 def lootbox_page():
     if 'user_id' not in session: return redirect(url_for('login'))
     available_sets = [d for d in os.listdir("lootboxes") if os.path.isdir(os.path.join("lootboxes", d))] if os.path.exists("lootboxes") else []
-    return render_template('lootbox.html', available_sets=available_sets, active_page="lootbox")
+    return render_template('lootbox.html', available_sets=available_sets, active_page="lootbox", npcs=get_npcs_for_page("lootbox"))
 
 def _open_one_box(user_id, set_name, valid_tiers):
     """Roll one item and add to user inventory. Returns (item_dict, None) or (None, error_msg)."""
@@ -470,7 +497,7 @@ def api_open_box():
 def town_hall():
     town = run_async(db.get_town_state())
     if not town: town = {'level': 1, 'treasury': 0.0, 'food': 0, 'tax_rate': 0.05, 'famine': 0, 'user_count': 1}
-    return render_template('town.html', town=town, active_page="town")
+    return render_template('town.html', town=town, active_page="town", npcs=get_npcs_for_page("town"))
 
 @app.route('/api/donate', methods=['POST'])
 def api_donate():
@@ -663,7 +690,7 @@ def _bj_score(hand):
 def casino_page():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    return render_template('casino.html', active_page='casino')
+    return render_template('casino.html', active_page='casino', npcs=get_npcs_for_page("casino"))
 
 def _require_casino_user():
     if 'user_id' not in session:
