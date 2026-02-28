@@ -64,23 +64,30 @@
         </div>
         {% endfor %}
     </div>
+    <div id="quest-claim-msg" style="margin-top: 12px; min-height: 24px; font-weight: 600;"></div>
 </div>
 <script>
 document.querySelectorAll('.btn-claim').forEach(function(btn) {
     btn.addEventListener('click', async function() {
         var id = this.getAttribute('data-quest-id');
-        var reward = this.getAttribute('data-reward');
+        var msgEl = document.getElementById('quest-claim-msg');
+        if (msgEl) msgEl.textContent = '';
         this.disabled = true;
         try {
             var r = await fetch('/api/quests/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quest_id: id }) });
             var data = await r.json();
             if (data.success) {
                 this.textContent = 'Claimed ✓';
+                if (msgEl) { msgEl.textContent = '+$' + (data.reward || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }); msgEl.style.color = 'var(--uncommon)'; }
                 if (typeof fetchLiveGoldBase === 'function') fetchLiveGoldBase();
             } else {
                 this.disabled = false;
+                if (msgEl) { msgEl.textContent = data.message || 'Claim failed.'; msgEl.style.color = '#fca5a5'; }
             }
-        } catch (e) { this.disabled = false; }
+        } catch (e) {
+            this.disabled = false;
+            if (msgEl) { msgEl.textContent = 'Request failed.'; msgEl.style.color = '#fca5a5'; }
+        }
     });
 });
 </script>

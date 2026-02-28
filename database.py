@@ -1183,14 +1183,18 @@ async def get_daily_quest_progress_for_date(user_id, date_str):
 
 async def claim_quest_reward(user_id, quest_id, date_str, gold_reward):
     async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT completed, claimed FROM daily_quest_progress WHERE user_id = ? AND quest_id = ? AND date = ?",
             (user_id, quest_id, date_str)
         ) as c:
             row = await c.fetchone()
-        if not row or not row["completed"] or row["claimed"]:
+        if not row:
+            return False
+        if not row["completed"] or row["claimed"]:
             return False
         await db.execute("UPDATE daily_quest_progress SET claimed = 1 WHERE user_id = ? AND quest_id = ? AND date = ?", (user_id, quest_id, date_str))
+        await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
         await db.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (gold_reward, user_id))
         await db.commit()
         return True
