@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Quests{% endblock %}
+
+{% block extra_head %}
+<style>
+    .quests-container { max-width: 640px; margin: 0 auto; }
+    .quest-card {
+        background: rgba(8, 14, 36, 0.95);
+        border-radius: 16px;
+        border: 1px solid rgba(31, 41, 55, 0.9);
+        padding: 18px 20px;
+        margin-bottom: 14px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    .quest-done { border-color: var(--uncommon); opacity: 0.9; }
+    .quest-claimed { opacity: 0.7; }
+    .quest-name { font-weight: 700; font-size: 1.05rem; margin-bottom: 4px; }
+    .quest-desc { color: var(--text-muted); font-size: 0.9rem; }
+    .quest-reward { color: var(--legendary); font-weight: 700; }
+    .quest-actions { margin-left: auto; }
+    .btn-claim {
+        background: var(--accent-color);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 999px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .btn-claim:disabled { background: #475569; cursor: not-allowed; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <div class="page-title">Daily Quests</div>
+        <div class="page-subtitle">Complete contracts for gold. Resets each day.</div>
+    </div>
+    <div class="pill">📜 Quests</div>
+</div>
+
+<div class="content-card">
+    <div class="quests-container">
+        {% for q in quests %}
+        <div class="quest-card {% if q.claimed %}quest-claimed{% elif q.completed %}quest-done{% endif %}">
+            <div>
+                <div class="quest-name">{{ q.name }}</div>
+                <div class="quest-desc">{{ q.desc }}</div>
+                <div class="quest-reward">Reward: ${{ "{:,.2f}".format(q.reward) }}</div>
+            </div>
+            <div class="quest-actions">
+                {% if q.claimed %}
+                <span style="color: var(--text-muted);">Claimed ✓</span>
+                {% elif q.completed %}
+                <button type="button" class="btn-claim" data-quest-id="{{ q.id }}" data-reward="{{ q.reward }}">Claim</button>
+                {% else %}
+                <span style="color: var(--text-muted);">—</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+<script>
+document.querySelectorAll('.btn-claim').forEach(function(btn) {
+    btn.addEventListener('click', async function() {
+        var id = this.getAttribute('data-quest-id');
+        var reward = this.getAttribute('data-reward');
+        this.disabled = true;
+        try {
+            var r = await fetch('/api/quests/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quest_id: id }) });
+            var data = await r.json();
+            if (data.success) {
+                this.textContent = 'Claimed ✓';
+                if (typeof fetchLiveGoldBase === 'function') fetchLiveGoldBase();
+            } else {
+                this.disabled = false;
+            }
+        } catch (e) { this.disabled = false; }
+    });
+});
+</script>
+{% endblock %}
