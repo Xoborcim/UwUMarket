@@ -654,7 +654,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 
     @app_commands.command(name="hack", description="[Hacker] Attempt to siphon funds from another player's bank account.")
-    @app_commands.checks.cooldown(1, 43200, key=lambda i: i.user.id) 
+    @app_commands.checks.cooldown(1, 10800, key=lambda i: i.user.id)  # 3 hour cooldown 
     async def hack(self, interaction: discord.Interaction, target: discord.Member):
         profile = await db.get_job_profile(interaction.user.id) # Added Await!
         job_name = ""
