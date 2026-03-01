@@ -161,14 +161,15 @@ class MarketGalleryUI(discord.ui.View):
 
     @discord.ui.button(label="Check Inventory", style=discord.ButtonStyle.secondary, emoji="🎒", row=1)
     async def inv_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Added Await!
         items = await db.get_inventory(interaction.user.id)
-        if not items: return await interaction.response.send_message("🎒 Your inventory is empty.", ephemeral=True)
+        if not items:
+            return await interaction.response.send_message("🎒 Your inventory is empty.", ephemeral=True)
+        header = "Find the ID of the item you want to sell.\n\n"
+        view = InventoryPaginatedView(interaction.user.id, items, [], header=header)
         embed = discord.Embed(title="🎒 Your Inventory", color=0x2c3e50)
-        desc = "Find the ID of the item you want to sell.\n\n"
-        for item in items: desc += f"`ID: {item['item_id']}` | **{item['item_name']}** ({item['tier']})\n"
-        embed.description = desc
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        embed.description = view._build_description()
+        embed.set_footer(text=f"Page 1/{view.total_pages} • {len(items)} items")
+        await interaction.response.send_message(embed=embed, ephemeral=True, view=view)
 
 
 # --- EQUIP UI ---
@@ -209,10 +210,76 @@ class EquipSelect(discord.ui.Select):
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 
 
+# Discord Select allows max 25 options
+EQUIP_SELECT_LIMIT = 25
+ITEMS_PER_PAGE = 25
+EMBED_DESC_MAX = 4096
+
+
+class InventoryPaginatedView(discord.ui.View):
+    DEFAULT_HEADER = "Use `/view_item [ID]` to see the image, or `/market` to sell it.\n\n"
+
+    def __init__(self, owner_id: int, items: list, equippable: list, *, timeout: float = 90, header: str | None = None):
+        super().__init__(timeout=timeout)
+        self.owner_id = owner_id
+        self.items = items
+        self.equippable = equippable
+        self.page = 0
+        self.header = header if header is not None else self.DEFAULT_HEADER
+        self.total_pages = max(1, (len(items) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
+        # Equip dropdown: Discord allows max 25 options
+        equip_slice = equippable[:EQUIP_SELECT_LIMIT]
+        if equip_slice:
+            self.add_item(EquipSelect(owner_id, equip_slice))
+        self._update_buttons()
+
+    def _update_buttons(self):
+        self.prev_btn.disabled = self.page <= 0
+        self.next_btn.disabled = self.page >= self.total_pages - 1
+
+    def _build_description(self):
+        start = self.page * ITEMS_PER_PAGE
+        chunk = self.items[start : start + ITEMS_PER_PAGE]
+        lines = []
+        for item in chunk:
+            item_dict = dict(item)
+            eq = " ✅" if item_dict.get("is_equipped") else ""
+            slot = item_dict.get("slot")
+            slot_str = f" — *{slot}*" if slot else ""
+            lines.append(f"`ID: {item['item_id']}` | **{item['item_name']}** ({item['tier']}){slot_str}{eq}")
+        desc = self.header + "\n".join(lines)
+        if len(desc) > EMBED_DESC_MAX:
+            desc = desc[: EMBED_DESC_MAX - 3] + "..."
+        return desc
+
+    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary, row=1)
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.owner_id:
+            return await interaction.response.send_message("❌ This menu is not yours.", ephemeral=True)
+        self.page = max(0, self.page - 1)
+        self._update_buttons()
+        embed = interaction.message.embeds[0] if interaction.message.embeds else discord.Embed(title="🎒 Your Inventory", color=0x2c3e50)
+        embed.description = self._build_description()
+        embed.set_footer(text=f"Page {self.page + 1}/{self.total_pages} • {len(self.items)} items")
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary, row=1)
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.owner_id:
+            return await interaction.response.send_message("❌ This menu is not yours.", ephemeral=True)
+        self.page = min(self.total_pages - 1, self.page + 1)
+        self._update_buttons()
+        embed = interaction.message.embeds[0] if interaction.message.embeds else discord.Embed(title="🎒 Your Inventory", color=0x2c3e50)
+        embed.description = self._build_description()
+        embed.set_footer(text=f"Page {self.page + 1}/{self.total_pages} • {len(self.items)} items")
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
 class EquipView(discord.ui.View):
     def __init__(self, owner_id: int, items):
         super().__init__(timeout=60)
-        self.add_item(EquipSelect(owner_id, items))
+        # Discord Select allows max 25 options
+        self.add_item(EquipSelect(owner_id, items[:EQUIP_SELECT_LIMIT]))
 
 
 # --- MAIN COG ---
@@ -368,18 +435,9 @@ class Items(commands.Cog):
 
     @app_commands.command(name="inventory", description="View your items.")
     async def inventory(self, interaction: discord.Interaction):
-        # Added Await!
         items = await db.get_inventory(interaction.user.id)
-        if not items: return await interaction.response.send_message("🎒 Your inventory is empty.", ephemeral=True)
-        embed = discord.Embed(title="🎒 Your Inventory", color=0x2c3e50)
-        desc = "Use `/view_item [ID]` to see the image, or `/market` to sell it.\n\n"
-        for item in items:
-            item_dict = dict(item)
-            eq = " ✅" if item_dict.get("is_equipped") else ""
-            slot = item_dict.get("slot")
-            slot_str = f" — *{slot}*" if slot else ""
-            desc += f"`ID: {item['item_id']}` | **{item['item_name']}** ({item['tier']}){slot_str}{eq}\n"
-        embed.description = desc
+        if not items:
+            return await interaction.response.send_message("🎒 Your inventory is empty.", ephemeral=True)
         # Treat any item with a slot OR with RPG stat bonuses as equippable.
         equippable = []
         for row in items:
@@ -389,7 +447,10 @@ class Items(commands.Cog):
             is_rpg = str(data.get("set_name", "")).startswith("RPG_") or data.get("item_type") == "Gear"
             if has_slot or has_stats or is_rpg:
                 equippable.append(row)
-        view = EquipView(interaction.user.id, equippable) if equippable else None
+        view = InventoryPaginatedView(interaction.user.id, items, equippable)
+        embed = discord.Embed(title="🎒 Your Inventory", color=0x2c3e50)
+        embed.description = view._build_description()
+        embed.set_footer(text=f"Page 1/{view.total_pages} • {len(items)} items" + (" • Use /equip [ID] for more" if len(equippable) > EQUIP_SELECT_LIMIT else ""))
         await interaction.response.send_message(embed=embed, ephemeral=True, view=view)
 
     @app_commands.command(name="equip", description="Equip a weapon/armor/mage item from your inventory (only one per slot).")
