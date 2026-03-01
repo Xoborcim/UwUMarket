@@ -657,7 +657,10 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
     @app_commands.checks.cooldown(1, 43200, key=lambda i: i.user.id) 
     async def hack(self, interaction: discord.Interaction, target: discord.Member):
         profile = await db.get_job_profile(interaction.user.id) # Added Await!
-        if not profile or profile['job'] != "Hacker":
+        job_name = ""
+        if profile and "job" in profile.keys():
+            job_name = profile["job"] or ""
+        if not profile or str(job_name).strip().lower() != "hacker":
             interaction.command.reset_cooldown(interaction)
             return await interaction.response.send_message("❌ Only **Hackers** have the software to do this!", ephemeral=True)
             
