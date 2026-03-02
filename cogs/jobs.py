@@ -45,6 +45,10 @@ RECIPES = {
     "Excalibur": {"Diamond": 3, "Gold Ore": 3, "Iron Ore": 5}
 }
 
+# --- HACKING ---
+HEX_POOL   = ["E9", "CB", "2A", "7D", "1C", "55", "FF", "BD", "3E", "A7", "8F", "C3"]
+SIPHON_TABLE = {0: 0.05, 1: 0.10, 2: 0.15, 3: 0.20}
+
 # Crafting outputs become equippable RPG gear (weapon/armor/mage slot).
 # Stats mirror RPG shop gear so crafted items are meaningful in `/rpg play`.
 CRAFTED_GEAR = {
@@ -336,221 +340,430 @@ class ElectionVoteView(discord.ui.View):
         except: pass
 
 
+class BreachProtocolGame(discord.ui.View):
+    """
+    Reusable 5x5 breach protocol grid.
 
-HEX_POOL = ["E9", "CB", "2A", "7D", "1C", "55", "FF", "BD", "3E", "A7"]
-GRID_SIZE = 5
-class HackerGame(discord.ui.View):
-    def __init__(self, user, hacker_payout_range=(360, 720)):
-        super().__init__(timeout=25)
-        self.user = user
-        self.hacker_payout_range = hacker_payout_range
-        self.ended = False
-        self.message = None
+    grid_size        : always 5 (Discord button row limit)
+    sequences        : how many sequences must be solved (chained)
+    seq_length       : codes per sequence
+    timeout_seconds  : timer
+    on_complete(interaction, sequences_done: int)
+                     : called when all done OR wrong code OR timeout
+                       sequences_done = how many full sequences were completed
+    """
+    def __init__(self, user, grid_size, sequences, seq_length, timeout_seconds, on_complete):
+        super().__init__(timeout=timeout_seconds)
+        self.user            = user
+        self.grid_size       = grid_size
+        self.total_sequences = sequences
+        self.seq_length      = seq_length
+        self.on_complete     = on_complete
+        self.ended           = False
+        self.message         = None
+        self.sequences_done  = 0
 
-        # --- Generate grid ---
+        # Build grid
         self.grid = [
-            [random.choice(HEX_POOL) for _ in range(GRID_SIZE)]
-            for _ in range(GRID_SIZE)
+            [random.choice(HEX_POOL) for _ in range(grid_size)]
+            for _ in range(grid_size)
         ]
 
-        # --- Generate a guaranteed-solvable target sequence ---
-        # Walk a valid path through the grid so we know it's always beatable
-        self.target = self._generate_solvable_sequence()
+        # Generate all sequences upfront as guaranteed-solvable paths
+        self.all_targets = []
+        for _ in range(sequences):
+            self.all_targets.append(self._generate_sequence())
 
-        # State
-        self.entered = []           # sequence entered so far
-        self.axis = "row"           # "row" = picking from a row, "col" = picking from a col
-        self.locked_index = 0       # which row or col is currently active
-        self.used_cells = set()     # (r, c) cells already clicked
+        self.current_seq = 0
+        self.entered     = []
+
+        # Selection state — always start locked to row 0
+        self.axis        = "row"
+        self.locked_idx  = 0
+        self.used_cells  = set()
 
         self._build_grid()
 
-    def _generate_solvable_sequence(self):
-        """Walk a valid alternating row/col path and collect the hex values."""
-        seq = []
-        axis = "row"
-        locked = 0  # start locked to row 0
-        used = set()
-
-        for _ in range(4):
-            if axis == "row":
-                candidates = [(locked, c) for c in range(GRID_SIZE) if (locked, c) not in used]
-            else:
-                candidates = [(r, locked) for r in range(GRID_SIZE) if (r, locked) not in used]
-
+    def _generate_sequence(self):
+        seq    = []
+        axis   = "row"
+        locked = 0
+        used   = set(self.used_cells)
+        for _ in range(self.seq_length):
+            candidates = (
+                [(locked, c) for c in range(self.grid_size) if (locked, c) not in used]
+                if axis == "row"
+                else [(r, locked) for r in range(self.grid_size) if (r, locked) not in used]
+            )
             if not candidates:
                 break
-
             r, c = random.choice(candidates)
             seq.append(self.grid[r][c])
             used.add((r, c))
             locked = c if axis == "row" else r
-            axis = "col" if axis == "row" else "row"
-
+            axis   = "col" if axis == "row" else "row"
         return seq
 
-    def _build_grid(self):
-        """Render the 5x5 grid as Discord buttons. Row 4 is reserved for a status/abort row."""
-        self.clear_items()
-
-        for r in range(GRID_SIZE):
-            for c in range(GRID_SIZE):
-                code = self.grid[r][c]
-                cell_id = f"bp_{r}_{c}"
-                is_used = (r, c) in self.used_cells
-
-                # Determine if this cell is currently selectable
-                selectable = self._is_selectable(r, c) and not is_used and not self.ended
-
-                if is_used:
-                    style = discord.ButtonStyle.secondary
-                elif selectable:
-                    style = discord.ButtonStyle.primary
-                else:
-                    style = discord.ButtonStyle.secondary
-
-                btn = discord.ui.Button(
-                    label=code if not is_used else "██",
-                    style=style,
-                    custom_id=cell_id,
-                    row=r,
-                    disabled=(not selectable or is_used or self.ended)
-                )
-                btn.callback = self._make_cell_callback(r, c)
-                self.add_item(btn)
+    @property
+    def target(self):
+        return self.all_targets[self.current_seq]
 
     def _is_selectable(self, r, c):
-        """Returns True if this cell can be selected given the current axis/locked_index."""
-        if self.axis == "row":
-            return r == self.locked_index
-        else:
-            return c == self.locked_index
+        return (r == self.locked_idx) if self.axis == "row" else (c == self.locked_idx)
 
-    def _make_cell_callback(self, r, c):
-        async def callback(interaction: discord.Interaction):
-            if interaction.user.id != self.user.id:
-                return await interaction.response.defer()
-            if self.ended:
-                return await interaction.response.defer()
-            if not self._is_selectable(r, c) or (r, c) in self.used_cells:
-                return await interaction.response.defer()
+    def _build_grid(self):
+        self.clear_items()
+        for r in range(self.grid_size):
+            for c in range(self.grid_size):
+                is_used    = (r, c) in self.used_cells
+                selectable = self._is_selectable(r, c) and not is_used and not self.ended
+                btn = discord.ui.Button(
+                    label     = self.grid[r][c] if not is_used else "██",
+                    style     = discord.ButtonStyle.primary if selectable else discord.ButtonStyle.secondary,
+                    custom_id = f"bp_{r}_{c}",
+                    row       = r,
+                    disabled  = not selectable
+                )
+                btn.callback = self._make_callback(r, c)
+                self.add_item(btn)
 
-            chosen_code = self.grid[r][c]
-            expected_code = self.target[len(self.entered)]
+    def _make_callback(self, r, c):
+        async def cb(interaction: discord.Interaction):
+            if interaction.user.id != self.user.id:   return await interaction.response.defer()
+            if self.ended:                             return await interaction.response.defer()
+            if not self._is_selectable(r, c):         return await interaction.response.defer()
+            if (r, c) in self.used_cells:             return await interaction.response.defer()
+
+            chosen   = self.grid[r][c]
+            expected = self.target[len(self.entered)]
 
             self.used_cells.add((r, c))
-            # Advance axis lock: if we were row-locked, next lock is this column, and vice versa
-            self.locked_index = c if self.axis == "row" else r
-            self.axis = "col" if self.axis == "row" else "row"
+            self.locked_idx = c if self.axis == "row" else r
+            self.axis       = "col" if self.axis == "row" else "row"
 
-            if chosen_code == expected_code:
-                self.entered.append(chosen_code)
+            if chosen == expected:
+                self.entered.append(chosen)
 
                 if len(self.entered) == len(self.target):
-                    self.ended = True
-                    self.clear_items()
-                    payout = random.randint(*self.hacker_payout_range)
-                    net, tax = await db.process_work(self.user.id, payout)
-                    embed = self._get_embed(status="success", net=net, tax=tax)
-                    await interaction.response.edit_message(embed=embed, view=self)
-                    await force_board_update(interaction.client)
-                    self.stop()
+                    self.sequences_done += 1
+                    self.entered = []
+
+                    if self.sequences_done == self.total_sequences:
+                        # All sequences done — success
+                        self.ended = True
+                        self.clear_items()
+                        await self.on_complete(interaction, self.sequences_done)
+                        self.stop()
+                    else:
+                        # Advance to next sequence, reset axis but keep used_cells
+                        self.current_seq += 1
+                        self.axis        = "row"
+                        self.locked_idx  = 0
+                        self._build_grid()
+                        await interaction.response.edit_message(
+                            embed=self.get_embed(
+                                extra_desc=f"✅ Sequence {self.sequences_done} complete! Now load sequence {self.current_seq + 1}."
+                            ),
+                            view=self
+                        )
                 else:
                     self._build_grid()
-                    await interaction.response.edit_message(embed=self._get_embed(), view=self)
+                    await interaction.response.edit_message(embed=self.get_embed(), view=self)
             else:
-              
+                # Wrong code — report whatever was completed so far
                 self.ended = True
                 self.clear_items()
-                await db.process_work(self.user.id, 0)
-                embed = self._get_embed(status="fail_wrong")
-                await interaction.response.edit_message(embed=embed, view=self)
+                await self.on_complete(interaction, self.sequences_done)
                 self.stop()
 
-        return callback
+        return cb
 
-    def _get_embed(self, status="playing", net=0.0, tax=0.0):
-        # Progress bar: show entered codes vs target slots
-        progress_parts = []
+    def get_embed(self, title="💻 BREACH PROTOCOL", color=0x00ff9f, extra_desc=""):
+        progress = []
         for i, code in enumerate(self.target):
-            if i < len(self.entered):
-                progress_parts.append(f"~~`{code}`~~")   # crossed off
-            elif i == len(self.entered):
-                progress_parts.append(f"**`{code}`**")   # current target
-            else:
-                progress_parts.append(f"`{code}`")        # upcoming
+            if i < len(self.entered):    progress.append(f"~~`{code}`~~")
+            elif i == len(self.entered): progress.append(f"**`{code}`**")
+            else:                        progress.append(f"`{code}`")
+        progress_str = "  →  ".join(progress)
 
-        progress_str = "  →  ".join(progress_parts)
-
-        # Axis hint
         axis_hint = (
-            f"Select from **ROW {self.locked_index + 1}** →"
+            f"Select from **ROW {self.locked_idx + 1}** →"
             if self.axis == "row"
-            else f"↓ Select from **COLUMN {self.locked_index + 1}**"
+            else f"↓ Select from **COLUMN {self.locked_idx + 1}**"
         )
 
-        if status == "playing":
-            embed = discord.Embed(
-                title="💻 BREACH PROTOCOL",
-                description=(
-                    f"Enter the sequence in order.\n"
-                    f"**Alternates between row-lock and column-lock.**\n\n"
-                    f"**Sequence:** {progress_str}\n\n"
-                    f"⏱️ **25 seconds** | {axis_hint}"
-                ),
-                color=0x00ff9f
-            )
-            embed.set_footer(text=f"Highlighted buttons = valid selections this turn")
+        seq_counter = f"Sequence **{self.current_seq + 1}** of **{self.total_sequences}**"
 
-        elif status == "success":
-            embed = discord.Embed(
-                title="💻 ACCESS GRANTED",
-                description=(
-                    f"**Sequence:** {progress_str}\n\n"
-                    f"Mainframe breached. Funds siphoned.\n\n"
-                    f"**Payout:** ${net:,.2f}\n"
-                    f"*(Laundered Tax: ${tax:,.2f})*"
-                ),
-                color=0x00ff9f
-            )
+        desc = "\n\n".join(filter(None, [
+            extra_desc,
+            f"{seq_counter}\n**Progress:** {progress_str}",
+            axis_hint
+        ]))
 
-        elif status == "fail_wrong":
-            embed = discord.Embed(
-                title="🚨 BREACH FAILED — WRONG CODE",
-                description=(
-                    f"**Sequence:** {progress_str}\n\n"
-                    f"Incorrect code entered. ICE detected you and locked the system." #LMAO ICE HAHAHA
-
-                ),
-                color=0xe74c3c
-            )
-
-        elif status == "timeout":
-            embed = discord.Embed(
-                title="🚨 BREACH FAILED — TIMEOUT",
-                description=(
-                    f"**Sequence:** {progress_str}\n\n"
-                    f"Buffer overflow. You ran out of time and were traced."
-                ),
-                color=0xe74c3c
-            )
-
+        embed = discord.Embed(title=title, description=desc, color=color)
+        embed.set_footer(text="Highlighted = valid selections  |  Wrong code = instant fail")
         return embed
-
-    def get_embed(self):
-        return self._get_embed(status="playing")
 
     async def on_timeout(self):
         if not self.ended:
             self.ended = True
             self.clear_items()
-            await db.process_work(self.user.id, 0)
-            embed = self._get_embed(status="timeout")
-            try:
-                await self.message.edit(embed=embed, view=self)
-            except Exception:
-                pass
+            await self.on_complete(None, self.sequences_done)
 
+class HackerGame:
+    """
+    Factory — wires BreachProtocolGame for /career work.
+    5x5, 1 sequence of 4 codes, 25 seconds.
+    """
+    def __init__(self, user, payout_range=(360, 720)):
+        self.user         = user
+        self.payout_range = payout_range
+        self._view        = None
+
+    def build(self):
+        payout_range = self.payout_range
+        user         = self.user
+        factory      = self
+
+        async def on_complete(interaction, sequences_done):
+            if sequences_done == 1:
+                payout = random.randint(*payout_range)
+                net, tax = await db.process_work(user.id, payout)
+                embed = discord.Embed(
+                    title="💻 ACCESS GRANTED",
+                    description=(
+                        f"Mainframe breached. Funds siphoned.\n\n"
+                        f"**Payout:** ${net:,.2f}\n"
+                        f"*(Laundered Tax: ${tax:,.2f})*"
+                    ),
+                    color=0x00ff9f
+                )
+            else:
+                await db.process_work(user.id, 0)
+                embed = discord.Embed(
+                    title="🚨 BREACH FAILED",
+                    description="ICE detected you. No payout this shift.",
+                    color=0xe74c3c
+                )
+
+            if interaction:
+                await interaction.response.edit_message(embed=embed, view=None)
+                await force_board_update(interaction.client)
+            else:
+                try: await factory._view.message.edit(embed=embed, view=None)
+                except Exception: pass
+
+        game = BreachProtocolGame(
+            user            = user,
+            grid_size       = 5,
+            sequences       = 1,
+            seq_length      = 4,
+            timeout_seconds = 25,
+            on_complete     = on_complete
+        )
+        self._view = game
+        return game
+
+    def get_embed(self):
+        return self._view.get_embed(
+            title      = "💻 BREACH PROTOCOL — WORK SHIFT",
+            color      = 0x00ff9f,
+            extra_desc = "Breach the mainframe to earn your paycheck. **25 seconds.**"
+        )
+    
+class HackExecutionGame:
+    """
+    Factory — wires BreachProtocolGame for /career hack execution.
+    5x5, 3 sequences of 5 codes, 60 seconds.
+    Siphon: 0 seqs=5%, 1=10%, 2=15%, 3=20%
+    """
+    def __init__(self, user, on_result):
+        self.user      = user
+        self.on_result = on_result
+        self._view     = None
+
+    def build(self):
+        user      = self.user
+        on_result = self.on_result
+
+        async def on_complete(interaction, sequences_done):
+            pct = SIPHON_TABLE.get(sequences_done, 0.05)
+            await on_result(interaction, pct)
+
+        game = BreachProtocolGame(
+            user            = user,
+            grid_size       = 5,
+            sequences       = 3,
+            seq_length      = 5,
+            timeout_seconds = 60,
+            on_complete     = on_complete
+        )
+        self._view = game
+        return game
+
+    def get_embed(self):
+        return self._view.get_embed(
+            title      = "💻 HACK EXECUTION — BREACH PROTOCOL",
+            color      = 0xf39c12,
+            extra_desc = (
+                "Complete sequences to maximise your siphon:\n"
+                "**0 sequences → 5%  |  1 → 10%  |  2 → 15%  |  3 → 20%**\n"
+                "You have **60 seconds.**"
+            )
+        )
+    
+class FirewallBolsterGame:
+    """
+    Factory — wires BreachProtocolGame for /career bolster.
+    5x5, 3 sequences of 4 codes, 60 seconds.
+    Each sequence completed = +10% hack fail chance (max 3 bolsters).
+    """
+    def __init__(self, user, on_result):
+        self.user      = user
+        self.on_result = on_result
+        self._view     = None
+
+    def build(self):
+        user      = self.user
+        on_result = self.on_result
+
+        async def on_complete(interaction, sequences_done):
+            await on_result(interaction, sequences_done)
+
+        game = BreachProtocolGame(
+            user            = user,
+            grid_size       = 5,
+            sequences       = 3,
+            seq_length      = 4,
+            timeout_seconds = 60,
+            on_complete     = on_complete
+        )
+        self._view = game
+        return game
+
+    def get_embed(self):
+        return self._view.get_embed(
+            title      = "🛡️ FIREWALL BOLSTER — BREACH PROTOCOL",
+            color      = 0x3498db,
+            extra_desc = (
+                "Each sequence completed adds **+10% hack fail chance** (max 3 bolsters).\n"
+                "**60 seconds.**"
+            )
+        )
+
+class FirewallRebootGame:
+    """
+    Factory — wires BreachProtocolGame for /career reboot.
+    5x5, 1 sequence of 5 codes, 45 seconds.
+    Success = firewall rebooted, hacker ID stored for identify attempt.
+    """
+    def __init__(self, user, on_result):
+        self.user      = user
+        self.on_result = on_result
+        self._view     = None
+
+    def build(self):
+        user      = self.user
+        on_result = self.on_result
+
+        async def on_complete(interaction, sequences_done):
+            await on_result(interaction, sequences_done >= 1)
+
+        game = BreachProtocolGame(
+            user            = user,
+            grid_size       = 5,
+            sequences       = 1,
+            seq_length      = 5,
+            timeout_seconds = 45,
+            on_complete     = on_complete
+        )
+        self._view = game
+        return game
+
+    def get_embed(self):
+        return self._view.get_embed(
+            title      = "🔄 FIREWALL REBOOT — BREACH PROTOCOL",
+            color      = 0xe74c3c,
+            extra_desc = (
+                "Your firewall is **COMPROMISED**. Solve the sequence to reboot it.\n"
+                "On success you can attempt to **identify** who hacked you.\n"
+                "**45 seconds.**"
+            )
+        )
+
+class IdentifyGuessView(discord.ui.View):
+    """
+    After rebooting, victim gets ONE guess at who hacked them.
+    Correct = hacker pays $500 fine to victim.
+    """
+    def __init__(self, victim, actual_hacker_id, guild):
+        super().__init__(timeout=120)
+        self.victim           = victim
+        self.actual_hacker_id = actual_hacker_id
+        self.guild            = guild
+        self.message          = None
+
+    def build_select(self, hacker_candidates):
+        """Pass a list of discord.Member. Returns False if empty."""
+        if not hacker_candidates:
+            return False
+        options = [
+            discord.SelectOption(label=m.display_name, value=str(m.id))
+            for m in hacker_candidates[:25]
+        ]
+        select = discord.ui.Select(
+            placeholder = "Who hacked you?",
+            options     = options,
+            custom_id   = "identify_select"
+        )
+        select.callback = self._select_callback
+        self.add_item(select)
+        return True
+
+    async def _select_callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.victim.id:
+            return await interaction.response.defer()
+
+        self.clear_items()
+        guessed_id = int(interaction.data["values"][0])
+
+        if guessed_id == self.actual_hacker_id:
+            fine = 500.0
+            await db.update_balance(self.actual_hacker_id, -fine)
+            await db.update_balance(self.victim.id, fine)
+            hacker_member = interaction.guild.get_member(self.actual_hacker_id)
+            hacker_name   = hacker_member.mention if hacker_member else f"<@{self.actual_hacker_id}>"
+            embed = discord.Embed(
+                title       = "🎯 CORRECT IDENTIFICATION",
+                description = (
+                    f"You correctly identified **{hacker_name}** as the culprit!\n\n"
+                    f"They were fined **$500.00** which was sent directly to your account."
+                ),
+                color = 0x2ecc71
+            )
+        else:
+            embed = discord.Embed(
+                title       = "❌ WRONG TARGET",
+                description = "Incorrect. The real hacker slipped away.",
+                color       = 0xe74c3c
+            )
+
+        await interaction.response.edit_message(embed=embed, view=self)
+        self.stop()
+
+    async def on_timeout(self):
+        self.clear_items()
+        try:
+            await self.message.edit(
+                embed=discord.Embed(
+                    title       = "⏰ Identify Window Expired",
+                    description = "You didn't make a guess in time.",
+                    color       = 0x95a5a6
+                ),
+                view=self
+            )
+        except Exception:
+            pass
 # ==========================================
 #               THE COG
 # ==========================================
@@ -684,8 +897,9 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
             await interaction.response.send_message(embed=view.get_embed(), view=view)
             
         elif job_data['type'] == "hacker":
-            view = HackerGame(interaction.user)
-            await interaction.response.send_message(embed=view.get_embed(), view=view)
+            factory = HackerGame(interaction.user)
+            view    = factory.build()
+            await interaction.response.send_message(embed=factory.get_embed(), view=view)
             view.message = await interaction.original_response()
             
         else: 
@@ -818,35 +1032,312 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
         else:
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 
-    @app_commands.command(name="hack", description="[Hacker] Attempt to siphon funds from another player's bank account.")
-    @app_commands.checks.cooldown(1, 10800, key=lambda i: i.user.id)  # 3 hour cooldown 
-    async def hack(self, interaction: discord.Interaction, target: discord.Member):
-        profile = await db.get_job_profile(interaction.user.id) # Added Await!
-        job_name = ""
-        if profile and "job" in profile.keys():
-            job_name = profile["job"] or ""
-        if not profile or str(job_name).strip().lower() != "hacker":
-            interaction.command.reset_cooldown(interaction)
-            return await interaction.response.send_message("❌ Only **Hackers** have the software to do this!", ephemeral=True)
+    # @app_commands.command(name="hack", description="[Hacker] Attempt to siphon funds from another player's bank account.")
+    # @app_commands.checks.cooldown(1, 10800, key=lambda i: i.user.id)  # 3 hour cooldown 
+    # async def hack(self, interaction: discord.Interaction, target: discord.Member):
+    #     profile = await db.get_job_profile(interaction.user.id) # Added Await!
+    #     job_name = ""
+    #     if profile and "job" in profile.keys():
+    #         job_name = profile["job"] or ""
+    #     if not profile or str(job_name).strip().lower() != "hacker":
+    #         interaction.command.reset_cooldown(interaction)
+    #         return await interaction.response.send_message("❌ Only **Hackers** have the software to do this!", ephemeral=True)
             
+    #     if target.id == interaction.user.id or target.bot:
+    #         interaction.command.reset_cooldown(interaction)
+    #         return await interaction.response.send_message("❌ Invalid target.", ephemeral=True)
+
+    #     target_bal = await db.get_balance(target.id) # Added Await!
+    #     if target_bal < 500:
+    #         interaction.command.reset_cooldown(interaction)
+    #         return await interaction.response.send_message("❌ Their firewall is garbage, but they are too poor to be worth hacking.", ephemeral=True)
+            
+    #     if random.random() < 0.60:
+    #         stolen = round(target_bal * random.uniform(0.02, 0.05), 2)
+    #         await db.update_balance(target.id, -stolen) # Added Await!
+    #         await db.update_balance(interaction.user.id, stolen) # Added Await!
+    #         await interaction.response.send_message(f"💻 **Hack Successful!** You bypassed {target.mention}'s security and siphoned **${stolen:,.2f}** into your account!")
+    #     else:
+    #         fine = 300.0
+    #         await db.update_balance(interaction.user.id, -fine) # Added Await!
+    #         await interaction.response.send_message(f"🚨 **Hack Traced!** {target.mention}'s security caught you. You were fined **${fine:,.2f}**.")
+
+    # ==========================================
+    #   /career firewall — buy a firewall
+    # ==========================================
+    @app_commands.command(name="firewall", description="Purchase a firewall to protect your account ($2,500 / 72 hours).")
+    async def buy_firewall_cmd(self, interaction: discord.Interaction):
+        COST  = 2500.0
+        HOURS = 72
+        success = await db.buy_firewall(interaction.user.id, COST, HOURS)
+        if not success:
+            return await interaction.response.send_message(
+                f"❌ You need **${COST:,.2f}** to purchase a firewall.", ephemeral=True
+            )
+        expires_ts = int((datetime.datetime.now() + datetime.timedelta(hours=HOURS)).timestamp())
+        embed = discord.Embed(
+            title       = "🛡️ Firewall Activated",
+            description = (
+                f"Your firewall is online and active until <t:{expires_ts}:F>.\n\n"
+                f"Use `/career bolster` to run a breach protocol and add up to **+30% hack resistance**."
+            ),
+            color = 0x3498db
+        )
+        await interaction.response.send_message(embed=embed)
+
+    # ==========================================
+    #   /career bolster — strengthen firewall
+    # ==========================================
+    @app_commands.command(name="bolster", description="Run a breach protocol to strengthen your active firewall.")
+    async def bolster_firewall_cmd(self, interaction: discord.Interaction):
+        fw = await db.get_firewall(interaction.user.id)
+        if not fw:
+            return await interaction.response.send_message(
+                "❌ You don't have an active firewall. Buy one with `/career firewall`.", ephemeral=True
+            )
+        expires = datetime.datetime.strptime(fw["expires_at"], "%Y-%m-%d %H:%M:%S")
+        if datetime.datetime.now() > expires:
+            return await interaction.response.send_message(
+                "❌ Your firewall has expired. Buy a new one with `/career firewall`.", ephemeral=True
+            )
+        if fw["bolster_count"] >= 3:
+            return await interaction.response.send_message(
+                "✅ Your firewall is already at max bolster (**+30% resistance**). No further upgrades possible.",
+                ephemeral=True
+            )
+
+        async def on_result(inner_interaction, sequences_done):
+            if sequences_done == 0:
+                embed = discord.Embed(
+                    title       = "🛡️ Bolster Failed",
+                    description = "No sequences completed — firewall strength unchanged.",
+                    color       = 0xe74c3c
+                )
+            else:
+                new_count = await db.bolster_firewall(interaction.user.id, sequences_done)
+                bonus_pct = (new_count or 0) * 10
+                embed = discord.Embed(
+                    title       = "🛡️ Firewall Bolstered",
+                    description = (
+                        f"**{sequences_done}** sequence(s) completed.\n\n"
+                        f"Your firewall now has **+{bonus_pct}% hack resistance** "
+                        f"({new_count}/3 bolsters)."
+                    ),
+                    color = 0x2ecc71
+                )
+            if inner_interaction:
+                await inner_interaction.response.edit_message(embed=embed, view=None)
+            else:
+                try: await factory._view.message.edit(embed=embed, view=None)
+                except Exception: pass
+
+        factory = FirewallBolsterGame(interaction.user, on_result)
+        view    = factory.build()
+        await interaction.response.send_message(embed=factory.get_embed(), view=view)
+        view.message = await interaction.original_response()
+
+    # ==========================================
+    #   /career reboot — reboot compromised firewall
+    # ==========================================
+    @app_commands.command(name="reboot", description="Reboot your compromised firewall and attempt to identify the hacker.")
+    async def reboot_firewall_cmd(self, interaction: discord.Interaction):
+        fw = await db.get_firewall(interaction.user.id)
+        if not fw or not fw["compromised_at"]:
+            return await interaction.response.send_message(
+                "✅ Your firewall is not currently compromised.", ephemeral=True
+            )
+        compromised_at = datetime.datetime.strptime(fw["compromised_at"], "%Y-%m-%d %H:%M:%S")
+        deadline       = compromised_at + datetime.timedelta(hours=2)
+        if datetime.datetime.now() > deadline:
+            return await interaction.response.send_message(
+                "❌ The 2-hour reboot window has expired. Buy a new firewall with `/career firewall`.",
+                ephemeral=True
+            )
+
+        async def on_result(inner_interaction, success: bool):
+            if not success:
+                embed = discord.Embed(
+                    title       = "🔄 Reboot Failed",
+                    description = "Sequence failed. Firewall still compromised — try again before the window expires.",
+                    color       = 0xe74c3c
+                )
+                if inner_interaction:
+                    await inner_interaction.response.edit_message(embed=embed, view=None)
+                return
+
+            hacker_id = await db.reboot_firewall(interaction.user.id)
+            embed = discord.Embed(
+                title       = "✅ Firewall Rebooted",
+                description = (
+                    "Firewall successfully rebooted!\n\n"
+                    "The breach left a partial signature. You have **one guess** — "
+                    "identify the hacker correctly and they pay **$500** to you."
+                ),
+                color = 0x2ecc71
+            )
+            if inner_interaction:
+                await inner_interaction.response.edit_message(embed=embed, view=None)
+
+            if not hacker_id:
+                return
+
+            # Build candidate list — all server Hackers + actual hacker regardless of job
+            hacker_members = []
+            for member in interaction.guild.members:
+                if member.bot or member.id == interaction.user.id:
+                    continue
+                profile = await db.get_job_profile(member.id)
+                if profile and profile.get("job") == "Hacker":
+                    hacker_members.append(member)
+
+            actual = interaction.guild.get_member(hacker_id)
+            if actual and actual not in hacker_members:
+                hacker_members.append(actual)
+
+            if not hacker_members:
+                return
+
+            random.shuffle(hacker_members)
+
+            guess_view = IdentifyGuessView(interaction.user, hacker_id, interaction.guild)
+            if not guess_view.build_select(hacker_members):
+                return
+
+            guess_embed = discord.Embed(
+                title       = "🔍 Identify the Hacker",
+                description = (
+                    f"The breach left a partial trace. You have **one guess**.\n"
+                    f"Correct = hacker pays **$500** directly to you.\n\n"
+                    f"There are no hints. Choose carefully."
+                ),
+                color = 0xf39c12
+            )
+            msg = await interaction.followup.send(embed=guess_embed, view=guess_view)
+            guess_view.message = msg
+
+        factory = FirewallRebootGame(interaction.user, on_result)
+        view    = factory.build()
+        await interaction.response.send_message(embed=factory.get_embed(), view=view)
+        view.message = await interaction.original_response()
+
+    # ==========================================
+    #   /career hack — full flow
+    # ==========================================
+    @app_commands.command(name="hack", description="[Hacker] Attempt to breach another player's account.")
+    @app_commands.checks.cooldown(1, 10800, key=lambda i: i.user.id)
+    async def hack(self, interaction: discord.Interaction, target: discord.Member):
+        # Job check
+        profile  = await db.get_job_profile(interaction.user.id)
+        job_name = (profile.get("job") or "") if profile else ""
+        if str(job_name).strip().lower() != "hacker":
+            interaction.command.reset_cooldown(interaction)
+            return await interaction.response.send_message(
+                "❌ Only **Hackers** have the software to do this!", ephemeral=True
+            )
+
         if target.id == interaction.user.id or target.bot:
             interaction.command.reset_cooldown(interaction)
             return await interaction.response.send_message("❌ Invalid target.", ephemeral=True)
 
-        target_bal = await db.get_balance(target.id) # Added Await!
+        target_bal = await db.get_balance(target.id)
         if target_bal < 500:
             interaction.command.reset_cooldown(interaction)
-            return await interaction.response.send_message("❌ Their firewall is garbage, but they are too poor to be worth hacking.", ephemeral=True)
-            
-        if random.random() < 0.60:
-            stolen = round(target_bal * random.uniform(0.02, 0.05), 2)
-            await db.update_balance(target.id, -stolen) # Added Await!
-            await db.update_balance(interaction.user.id, stolen) # Added Await!
-            await interaction.response.send_message(f"💻 **Hack Successful!** You bypassed {target.mention}'s security and siphoned **${stolen:,.2f}** into your account!")
-        else:
-            fine = 300.0
-            await db.update_balance(interaction.user.id, -fine) # Added Await!
-            await interaction.response.send_message(f"🚨 **Hack Traced!** {target.mention}'s security caught you. You were fined **${fine:,.2f}**.")
+            return await interaction.response.send_message(
+                "❌ They're too poor to be worth hacking.", ephemeral=True
+            )
+
+        # Firewall check
+        fw           = await db.get_firewall(target.id)
+        block_chance = 0.0
+        fw_active    = False
+
+        if fw:
+            expires = datetime.datetime.strptime(fw["expires_at"], "%Y-%m-%d %H:%M:%S")
+            if datetime.datetime.now() < expires and not fw["compromised_at"]:
+                fw_active    = True
+                block_chance = fw["bolster_count"] * 0.10
+
+        # Random block roll — 15% base + firewall bonus
+        base_block  = 0.15
+        total_block = base_block + block_chance
+
+        if random.random() < total_block:
+            fw_note = (
+                f" *(Firewall: +{int(block_chance*100)}% | Base: 15%)*"
+                if fw_active
+                else " *(Lucky block — 15% base chance)*"
+            )
+            interaction.command.reset_cooldown(interaction)
+            return await interaction.response.send_message(
+                embed=discord.Embed(
+                    title       = "🛡️ Hack Blocked",
+                    description = f"The target's defenses rejected your intrusion.{fw_note}\nCooldown not consumed.",
+                    color       = 0xe74c3c
+                ),
+                ephemeral=True
+            )
+
+        # Hacker runs breach puzzle to determine siphon %
+        async def on_hack_result(inner_interaction, siphon_pct: float):
+            current_bal = await db.get_balance(target.id)
+            if current_bal < 500:
+                embed = discord.Embed(
+                    title       = "💻 Hack Fizzled",
+                    description = f"{target.mention} spent their money before you could steal it.",
+                    color       = 0x95a5a6
+                )
+                if inner_interaction:
+                    await inner_interaction.response.edit_message(embed=embed, view=None)
+                return
+
+            stolen = round(current_bal * siphon_pct, 2)
+            await db.update_balance(target.id, -stolen)
+            await db.update_balance(interaction.user.id, stolen)
+            await db.compromise_firewall(target.id, interaction.user.id)
+
+            result_embed = discord.Embed(
+                title       = "💻 HACK COMPLETE",
+                description = (
+                    f"**Siphon rate:** {int(siphon_pct * 100)}%\n"
+                    f"**Stolen:** ${stolen:,.2f} from {target.mention}\n\n"
+                    f"Their firewall is now **COMPROMISED**. "
+                    f"They have **2 hours** to reboot it."
+                ),
+                color = 0x00ff9f
+            )
+            if inner_interaction:
+                await inner_interaction.response.edit_message(embed=result_embed, view=None)
+
+            # DM the victim
+            try:
+                await target.send(embed=discord.Embed(
+                    title       = "🚨 YOUR ACCOUNT WAS HACKED",
+                    description = (
+                        f"Someone breached your account and stole **${stolen:,.2f}**!\n\n"
+                        f"Your firewall is **COMPROMISED**.\n"
+                        f"Use `/career reboot` within **2 hours** to reboot it "
+                        f"and attempt to identify the hacker.\n"
+                        f"After 2 hours the window expires."
+                    ),
+                    color = 0xe74c3c
+                ))
+            except discord.Forbidden:
+                pass
+
+            await force_board_update(interaction.client)
+
+        factory = HackExecutionGame(interaction.user, on_hack_result)
+        view    = factory.build()
+        await interaction.response.send_message(embed=factory.get_embed(), view=view)
+        view.message = await interaction.original_response()
+
+    @hack.error
+    async def hack_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            hours = error.retry_after / 3600
+            await interaction.response.send_message(
+                f"⏳ Laying low. Try again in **{hours:.1f} hours**.", ephemeral=True
+            )
 
     @embezzle.error
     @hack.error
