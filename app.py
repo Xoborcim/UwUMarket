@@ -153,6 +153,7 @@ def _load_wordle_words():
 
 
 WORDLE_WORDS = _load_wordle_words()
+WORDLE_WORDS_SET = set(WORDLE_WORDS)
 
 # In-memory active lobbies: code -> lobby dict
 ACTIVE_WORDLE_LOBBIES = {}
@@ -556,6 +557,8 @@ def api_wordle_guess():
 
     if len(raw_guess) != 5 or not raw_guess.isalpha():
         return {"success": False, "error": "Guess must be a 5-letter word."}, 400
+    if raw_guess not in WORDLE_WORDS_SET:
+        return {"success": False, "error": "That word is not in the allowed Wordle dictionary."}, 400
 
     lobby = ACTIVE_WORDLE_LOBBIES.get(code)
     if not lobby:
