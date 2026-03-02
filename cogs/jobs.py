@@ -429,52 +429,73 @@ class BreachProtocolGame(discord.ui.View):
 
     def _make_callback(self, r, c):
         async def cb(interaction: discord.Interaction):
-            if interaction.user.id != self.user.id:   return await interaction.response.defer()
-            if self.ended:                             return await interaction.response.defer()
-            if not self._is_selectable(r, c):         return await interaction.response.defer()
-            if (r, c) in self.used_cells:             return await interaction.response.defer()
+            try:
+                if interaction.user.id != self.user.id:
+                    return await interaction.response.defer()
+                if self.ended:
+                    return await interaction.response.defer()
+                if not self._is_selectable(r, c):
+                    return await interaction.response.defer()
+                if (r, c) in self.used_cells:
+                    return await interaction.response.defer()
 
-            chosen   = self.grid[r][c]
-            expected = self.target[len(self.entered)]
+                chosen   = self.grid[r][c]
+                expected = self.target[len(self.entered)]
 
-            self.used_cells.add((r, c))
-            self.locked_idx = c if self.axis == "row" else r
-            self.axis       = "col" if self.axis == "row" else "row"
+                self.used_cells.add((r, c))
+                self.locked_idx = c if self.axis == "row" else r
+                self.axis       = "col" if self.axis == "row" else "row"
 
-            if chosen == expected:
-                self.entered.append(chosen)
+                if chosen == expected:
+                    self.entered.append(chosen)
 
-                if len(self.entered) == len(self.target):
-                    self.sequences_done += 1
-                    self.entered = []
+                    if len(self.entered) == len(self.target):
+                        self.sequences_done += 1
+                        self.entered = []
 
-                    if self.sequences_done == self.total_sequences:
-                        # All sequences done — success
-                        self.ended = True
-                        self.clear_items()
-                        await self.on_complete(interaction, self.sequences_done)
-                        self.stop()
+                        if self.sequences_done == self.total_sequences:
+                            # All sequences done — success
+                            self.ended = True
+                            self.clear_items()
+                            await self.on_complete(interaction, self.sequences_done)
+                            self.stop()
+                        else:
+                            # Advance to next sequence, reset axis but keep used_cells
+                            self.current_seq += 1
+                            self.axis        = "row"
+                            self.locked_idx  = 0
+                            self._build_grid()
+                            await interaction.response.edit_message(
+                                embed=self.get_embed(
+                                    extra_desc=f"✅ Sequence {self.sequences_done} complete! Now load sequence {self.current_seq + 1}."
+                                ),
+                                view=self
+                            )
                     else:
-                        # Advance to next sequence, reset axis but keep used_cells
-                        self.current_seq += 1
-                        self.axis        = "row"
-                        self.locked_idx  = 0
                         self._build_grid()
-                        await interaction.response.edit_message(
-                            embed=self.get_embed(
-                                extra_desc=f"✅ Sequence {self.sequences_done} complete! Now load sequence {self.current_seq + 1}."
-                            ),
-                            view=self
-                        )
+                        await interaction.response.edit_message(embed=self.get_embed(), view=self)
                 else:
-                    self._build_grid()
-                    await interaction.response.edit_message(embed=self.get_embed(), view=self)
-            else:
-                # Wrong code — report whatever was completed so far
-                self.ended = True
-                self.clear_items()
-                await self.on_complete(interaction, self.sequences_done)
-                self.stop()
+                    # Wrong code — report whatever was completed so far
+                    self.ended = True
+                    self.clear_items()
+                    await self.on_complete(interaction, self.sequences_done)
+                    self.stop()
+            except Exception as e:
+                # Failsafe so the interaction is always acknowledged and doesn't time out
+                print(f\"[BreachProtocolGame] Button error: {e}\")
+                try:
+                    if not interaction.response.is_done():
+                        await interaction.response.send_message(
+                            \"❌ Something went wrong handling this hack action. Please try again.\",
+                            ephemeral=True
+                        )
+                    else:
+                        await interaction.followup.send(
+                            \"❌ Something went wrong handling this hack action. Please try again.\",
+                            ephemeral=True
+                        )
+                except Exception:
+                    pass
 
         return cb
 
@@ -1333,18 +1354,45 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
 
     @hack.error
     async def hack_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        # Cooldown handling
         if isinstance(error, app_commands.CommandOnCooldown):
             hours = error.retry_after / 3600
-            await interaction.response.send_message(
-                f"⏳ Laying low. Try again in **{hours:.1f} hours**.", ephemeral=True
-            )
+            try:
+                await interaction.response.send_message(
+                    f"⏳ Laying low. Try again in **{hours:.1f} hours**.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
+            return
+
+        # Generic fallback so the interaction never silently times out
+        print(f"[hack] Unexpected error: {repr(error)}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "❌ Something went wrong running this hack. Please try again later.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.followup.send(
+                    "❌ Something went wrong running this hack. Please try again later.",
+                    ephemeral=True,
+                )
+        except Exception:
+            pass
 
     @embezzle.error
-    @hack.error
-    async def on_perk_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+    async def embezzle_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.CommandOnCooldown):
             hours = error.retry_after / 3600
-            await interaction.response.send_message(f"⏳ You are laying low. You must wait **{hours:.1f} hours** before doing this again.", ephemeral=True)
+            try:
+                await interaction.response.send_message(
+                    f"⏳ You are laying low. You must wait **{hours:.1f} hours** before doing this again.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
 
 async def setup(bot):
     await bot.add_cog(Jobs(bot))
