@@ -212,6 +212,77 @@
         font-size: 0.8rem;
         color: var(--text-muted);
     }
+    .wordle-keyboard {
+        margin-top: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        user-select: none;
+    }
+    .kb-row {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        flex-wrap: nowrap;
+    }
+    .kb-key {
+        min-width: 34px;
+        height: 44px;
+        padding: 0 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        background: rgba(15, 23, 42, 0.85);
+        color: var(--text-main);
+        font-weight: 800;
+        font-size: 0.9rem;
+        letter-spacing: 0.08em;
+        cursor: pointer;
+        transition: transform 0.08s ease, background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+        text-transform: uppercase;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 1 1 0;
+        max-width: 56px;
+    }
+    .kb-key:hover {
+        transform: translateY(-1px);
+        border-color: rgba(255, 75, 139, 0.5);
+    }
+    .kb-key.kb-wide {
+        flex: 1.6 1 0;
+        max-width: 90px;
+        letter-spacing: 0.03em;
+        font-size: 0.78rem;
+    }
+    .kb-key.kb-correct {
+        background: #16a34a;
+        border-color: #22c55e;
+        color: #ecfdf5;
+    }
+    .kb-key.kb-present {
+        background: #eab308;
+        border-color: #facc15;
+        color: #fefce8;
+    }
+    .kb-key.kb-absent {
+        background: #111827;
+        border-color: #1f2937;
+        color: #6b7280;
+    }
+    @media (max-width: 520px) {
+        .kb-key {
+            height: 42px;
+            min-width: 28px;
+            padding: 0 8px;
+            border-radius: 9px;
+            font-size: 0.82rem;
+            max-width: 46px;
+        }
+        .kb-key.kb-wide {
+            max-width: 78px;
+        }
+    }
     .wordle-scoreboard-table {
         width: 100%;
         border-collapse: collapse;
@@ -257,7 +328,7 @@
 <div class="wordle-page">
     <div class="wordle-header">
         <h1>Wordle Arena</h1>
-        <p>Join a lobby and race other adventurers through the same 10-word Wordle gauntlet. Fewer guesses and faster clears rank higher.</p>
+        <p>Join a lobby and race other adventurers through the same 5-word Wordle gauntlet. Fewer guesses and faster clears rank higher.</p>
     </div>
 
     <div class="wordle-layout">
@@ -305,6 +376,9 @@
                         <input type="text" id="guess-input" maxlength="5" autocomplete="off" placeholder="TYPE" />
                         <button class="btn-wordle btn-small" id="btn-submit-guess" type="button">Submit Guess</button>
                         <span class="wordle-guess-hint">5 letters · up to 6 guesses per word.</span>
+                    </div>
+                    <div class="wordle-keyboard" id="wordle-keyboard" aria-label="Wordle keyboard">
+                        <!-- keyboard rendered by JS -->
                     </div>
                 </div>
             </div>
@@ -354,11 +428,15 @@
     const guessRow = document.getElementById("wordle-guess-input-row");
     const guessInput = document.getElementById("guess-input");
     const submitGuessBtn = document.getElementById("btn-submit-guess");
+    const keyboardEl = document.getElementById("wordle-keyboard");
 
     let currentLobbyCode = lobbyCodeFromServer || "";
     let pollTimer = null;
     let isHost = false;
     let latestState = null;
+    let keyboardBuilt = false;
+
+    const KEY_PRECEDENCE = { "absent": 1, "present": 2, "correct": 3 };
 
     function showInitial() {
         initialPanel.style.display = "";
@@ -386,6 +464,121 @@
     function clearError() {
         errorInitial.textContent = "";
         errorActive.textContent = "";
+    }
+
+    function _normalizeKeyState(state) {
+        const s = String(state || "");
+        if (s === "correct" || s === "present" || s === "absent") return s;
+        return "";
+    }
+
+    function computeKeyStatesForCurrentWord(you) {
+        const out = {};
+        if (!you || !you.words || typeof you.current_index !== "number") return out;
+        const idx = you.current_index;
+        if (!you.words[idx] || !you.words[idx].guesses) return out;
+
+        const guesses = you.words[idx].guesses;
+        for (const g of guesses) {
+            const letters = String(g.guess || "").toUpperCase();
+            const pattern = g.pattern || [];
+            for (let i = 0; i < Math.min(letters.length, 5); i++) {
+                const ch = letters[i];
+                const st = _normalizeKeyState(pattern[i]);
+                if (!ch || ch.length !== 1) continue;
+                if (!st) continue;
+                const prev = out[ch];
+                if (!prev || KEY_PRECEDENCE[st] > KEY_PRECEDENCE[prev]) {
+                    out[ch] = st;
+                }
+            }
+        }
+        return out;
+    }
+
+    function updateKeyboard(you) {
+        if (!keyboardEl) return;
+        const states = computeKeyStatesForCurrentWord(you);
+        const keys = keyboardEl.querySelectorAll("button[data-key]");
+        keys.forEach(btn => {
+            const k = btn.getAttribute("data-key") || "";
+            if (!k || k.length !== 1) return;
+            btn.classList.remove("kb-correct", "kb-present", "kb-absent");
+            const st = states[k];
+            if (st === "correct") btn.classList.add("kb-correct");
+            else if (st === "present") btn.classList.add("kb-present");
+            else if (st === "absent") btn.classList.add("kb-absent");
+        });
+    }
+
+    function _appendGuessChar(ch) {
+        if (!guessInput) return;
+        const cur = String(guessInput.value || "");
+        if (cur.length >= 5) return;
+        guessInput.value = (cur + ch).toUpperCase();
+        guessInput.focus();
+    }
+
+    function _backspaceGuess() {
+        if (!guessInput) return;
+        const cur = String(guessInput.value || "");
+        guessInput.value = cur.slice(0, -1).toUpperCase();
+        guessInput.focus();
+    }
+
+    function buildKeyboardOnce() {
+        if (!keyboardEl || keyboardBuilt) return;
+        keyboardBuilt = true;
+        keyboardEl.innerHTML = "";
+
+        const rows = [
+            ["Q","W","E","R","T","Y","U","I","O","P"],
+            ["A","S","D","F","G","H","J","K","L"],
+            ["ENTER","Z","X","C","V","B","N","M","BKSP"],
+        ];
+
+        for (const row of rows) {
+            const rowDiv = document.createElement("div");
+            rowDiv.className = "kb-row";
+
+            for (const key of row) {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "kb-key";
+
+                if (key === "ENTER") {
+                    btn.classList.add("kb-wide");
+                    btn.textContent = "Enter";
+                } else if (key === "BKSP") {
+                    btn.classList.add("kb-wide");
+                    btn.textContent = "⌫";
+                } else {
+                    btn.textContent = key;
+                    btn.setAttribute("data-key", key);
+                }
+
+                btn.addEventListener("click", function() {
+                    // Disable interaction if game isn't live or input hidden
+                    if (!latestState || !latestState.lobby) return;
+                    if (guessRow && guessRow.style.display === "none") return;
+
+                    if (key === "ENTER") {
+                        if ((guessInput.value || "").trim().length === 5) {
+                            submitGuess();
+                        }
+                        return;
+                    }
+                    if (key === "BKSP") {
+                        _backspaceGuess();
+                        return;
+                    }
+                    _appendGuessChar(key);
+                });
+
+                rowDiv.appendChild(btn);
+            }
+            keyboardEl.appendChild(rowDiv);
+        }
     }
 
     async function createLobby() {
@@ -509,6 +702,8 @@
         // game area visibility
         if (lobby.status === "in_progress" || lobby.status === "finished") {
             gameArea.style.display = "";
+            buildKeyboardOnce();
+            updateKeyboard(you);
         } else {
             gameArea.style.display = "none";
         }
@@ -610,6 +805,9 @@
         } else {
             guessRow.style.display = "";
         }
+
+        buildKeyboardOnce();
+        updateKeyboard(you);
     }
 
     async function pollState() {
@@ -716,6 +914,35 @@
     guessInput?.addEventListener("keyup", function(ev) {
         if (ev.key === "Enter") {
             submitGuess();
+        }
+    });
+
+    // Optional: allow typing without focusing the input (like real Wordle)
+    document.addEventListener("keydown", function(ev) {
+        if (!currentLobbyCode) return;
+        if (!latestState || !latestState.lobby) return;
+        if (gameArea.style.display === "none") return;
+        if (guessRow && guessRow.style.display === "none") return;
+
+        const k = ev.key;
+        if (k === "Backspace") {
+            ev.preventDefault();
+            _backspaceGuess();
+            return;
+        }
+        if (k === "Enter") {
+            if ((guessInput.value || "").trim().length === 5) {
+                ev.preventDefault();
+                submitGuess();
+            }
+            return;
+        }
+        if (/^[a-zA-Z]$/.test(k)) {
+            // Avoid double-typing if user is focused in another input
+            if (document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement !== guessInput) {
+                return;
+            }
+            _appendGuessChar(k.toUpperCase());
         }
     });
 
