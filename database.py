@@ -179,6 +179,15 @@ async def initialize_db():
         await db.execute("INSERT OR IGNORE INTO world_boss (id, current_hp, max_hp) VALUES (1, 10000.0, 10000.0)")
         await db.commit()
 
+        # 6. FIREWALL TABLE
+        await db.execute('''CREATE TABLE IF NOT EXISTS firewalls (
+            user_id         INTEGER PRIMARY KEY,
+            expires_at      TEXT NOT NULL,
+            bolster_count   INTEGER DEFAULT 0,
+            compromised_at  TEXT,
+            last_hacker_id  INTEGER
+        )''')
+
 
 async def sync_user_data(user_id, username, avatar_hash=None):
     """Ensures the user exists and their username/avatar are up to date."""
@@ -730,6 +739,97 @@ async def buy_market_item(buyer_id, item_id):
             await db.commit()
             return True, f"You bought {item['item_name']} for ${price:,.2f}!"
         except Exception as e: return False, str(e)
+
+
+# --- HACKING and FIREWALL ---
+async def get_firewall(user_id: int):
+    """Returns firewall row or None. Fields: user_id, expires_at, bolster_count, compromised_at, last_hacker_id"""
+    async with aiosqlite.connect(DB_NAME) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM firewalls WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            return await cursor.fetchone()
+
+async def buy_firewall(user_id: int, cost: float, hours: int):
+    """Deducts cost and sets a fresh firewall. Returns False if insufficient funds."""
+    async with aiosqlite.connect(DB_NAME) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cur:
+            row = await cur.fetchone()
+        if not row or row["balance"] < cost:
+            return False
+        expires = (datetime.datetime.now() + datetime.timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+        await conn.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (cost, user_id))
+        await conn.execute("""
+            INSERT INTO firewalls (user_id, expires_at, bolster_count, compromised_at, last_hacker_id)
+            VALUES (?, ?, 0, NULL, NULL)
+            ON CONFLICT(user_id) DO UPDATE SET
+                expires_at = excluded.expires_at,
+                bolster_count = 0,
+                compromised_at = NULL,
+                last_hacker_id = NULL
+        """, (user_id, expires))
+        await conn.commit()
+        return True
+
+async def bolster_firewall(user_id: int, sequences_completed: int):
+    """Adds bolster stacks (max 3). Returns new bolster count or None if no active firewall."""
+    async with aiosqlite.connect(DB_NAME) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute("SELECT * FROM firewalls WHERE user_id = ?", (user_id,)) as cur:
+            fw = await cur.fetchone()
+        if not fw:
+            return None
+        # Check firewall not expired
+        expires = datetime.datetime.strptime(fw["expires_at"], "%Y-%m-%d %H:%M:%S")
+        if datetime.datetime.now() > expires:
+            return None
+        new_count = min(3, fw["bolster_count"] + sequences_completed)
+        await conn.execute(
+            "UPDATE firewalls SET bolster_count = ? WHERE user_id = ?", (new_count, user_id)
+        )
+        await conn.commit()
+        return new_count
+
+async def compromise_firewall(user_id: int, hacker_id: int):
+    """
+    Marks firewall as compromised and records who did it.
+    If the victim has no firewall row at all, creates a minimal expired one
+    so the compromised_at and last_hacker_id fields are still stored
+    and /career reboot can function.
+    """
+    async with aiosqlite.connect(DB_NAME) as conn:
+        compromised = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Expired timestamp so it doesn't count as an active firewall
+        expired = datetime.datetime(2000, 1, 1).strftime("%Y-%m-%d %H:%M:%S")
+        await conn.execute("""
+            INSERT INTO firewalls (user_id, expires_at, bolster_count, compromised_at, last_hacker_id)
+            VALUES (?, ?, 0, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                compromised_at  = excluded.compromised_at,
+                last_hacker_id  = excluded.last_hacker_id
+        """, (user_id, expired, compromised, hacker_id))
+        await conn.commit()
+
+async def reboot_firewall(user_id: int):
+    """
+    Clears compromised state and resets bolsters.
+    Returns last_hacker_id (so victim can attempt to identify them) or None.
+    """
+    async with aiosqlite.connect(DB_NAME) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute("SELECT * FROM firewalls WHERE user_id = ?", (user_id,)) as cur:
+            fw = await cur.fetchone()
+        if not fw:
+            return None
+        hacker_id = fw["last_hacker_id"]
+        await conn.execute("""
+            UPDATE firewalls SET compromised_at = NULL, last_hacker_id = NULL, bolster_count = 0
+            WHERE user_id = ?
+        """, (user_id,))
+        await conn.commit()
+        return hacker_id
 
 # --- JOBS & TOWN INCOME SYSTEM ---
 ECONOMY_MULTIPLIER_DEFAULT = 0.7  # Global scale for all payouts (jobs, dungeon, casino). Raise for "prosperity" events.
