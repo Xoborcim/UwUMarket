@@ -72,6 +72,7 @@ LOCATION_AMBIANCE = {
     "rpg_stats": ("RPG Stats", "Records of every adventurer. The Hall of Legends honors the boldest."),
     "profile": ("Adventurer Profile", "Your renown, gear, and deeds. This is your legend."),
     "guild_wars": ("Guild Wars", "Challenge another guild and fight head-to-head for glory and gold."),
+    "wordle": ("Wordle Arena", "Race other adventurers through shared Wordle boards. Speed and accuracy decide the victor."),
 }
 
 def get_location_ambiance(active_page):
@@ -101,6 +102,159 @@ SET_BONUSES = {
     "RPG_Set_1": {2: {"atk": 2}, 4: {"def": 3}, 6: {"atk": 5, "def": 5}},
     "Base_Set": {2: {"atk": 1}, 4: {"def": 2}},
 }
+
+# --- WORDLE ARENA (multiplayer Wordle lobbies) ---
+
+def _load_wordle_words():
+    """
+    Load 5-letter Wordle-valid words from docs.
+    Falls back to a tiny built-in list if file missing/empty.
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base_dir, "docs", "valid_wordle_words.txt"),
+        os.path.join(base_dir, "docs", "valid-wordle-words.txt"),
+    ]
+    chosen = next((p for p in candidates if os.path.exists(p)), None)
+
+    fallback = [
+        "aback", "cigar", "rebut", "sissy", "humph", "awake", "blush", "focal", "evade", "naval",
+    ]
+
+    if not chosen:
+        print("[Wordle] No word list found in docs/. Using fallback list.")
+        return fallback
+
+    try:
+        with open(chosen, "r", encoding="utf-8") as f:
+            raw = [ln.strip().lower() for ln in f.readlines()]
+    except Exception as e:
+        print(f"[Wordle] Failed to read word list ({chosen}): {e}. Using fallback list.")
+        return fallback
+
+    words = []
+    seen = set()
+    for w in raw:
+        if not w or w.startswith("#"):
+            continue
+        if len(w) != 5 or (not w.isalpha()):
+            continue
+        if w in seen:
+            continue
+        seen.add(w)
+        words.append(w)
+
+    if len(words) < 50:
+        print(f"[Wordle] Word list too small ({len(words)}). Using fallback list.")
+        return fallback
+
+    print(f"[Wordle] Loaded {len(words)} valid 5-letter words from {os.path.basename(chosen)}.")
+    return words
+
+
+WORDLE_WORDS = _load_wordle_words()
+
+# In-memory active lobbies: code -> lobby dict
+ACTIVE_WORDLE_LOBBIES = {}
+
+
+def _wordle_generate_lobby_code(length: int = 5) -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(random.choice(alphabet) for _ in range(length))
+
+
+def _wordle_pick_words(count: int = 10):
+    pool = WORDLE_WORDS
+    if count >= len(pool):
+        # If asking for more than we have, just shuffle and slice
+        words = list(pool)
+        random.shuffle(words)
+        return words[:count]
+    return random.sample(pool, count)
+
+
+def _wordle_eval(secret: str, guess: str):
+    """
+    Standard Wordle evaluation:
+    - 'correct'  = right letter, right spot
+    - 'present'  = right letter, wrong spot
+    - 'absent'   = not in word (accounting for duplicates)
+    """
+    secret = secret.lower()
+    guess = guess.lower()
+    result = ["absent"] * len(secret)
+    counts = {}
+
+    # First pass: correct letters
+    for i, ch in enumerate(secret):
+        if guess[i] == ch:
+            result[i] = "correct"
+        else:
+            counts[ch] = counts.get(ch, 0) + 1
+
+    # Second pass: present letters
+    for i, ch in enumerate(guess):
+        if result[i] == "correct":
+            continue
+        if counts.get(ch, 0) > 0:
+            result[i] = "present"
+            counts[ch] -= 1
+
+    return result
+
+
+def _wordle_ensure_player(lobby, user_id: int, username: str):
+    if user_id in lobby["players"]:
+        lobby["players"][user_id]["username"] = username
+        return lobby["players"][user_id]
+
+    per_word = [
+        {"guesses": [], "solved_at": None, "failed": False}
+        for _ in lobby["word_list"]
+    ]
+    state = {
+        "username": username,
+        "joined_at": datetime.datetime.utcnow(),
+        "current_index": 0,
+        "per_word": per_word,
+        "finished_at": None,
+    }
+    lobby["players"][user_id] = state
+    return state
+
+
+def _wordle_build_scoreboard(lobby, now=None):
+    if now is None:
+        now = datetime.datetime.utcnow()
+    rows = []
+    started_at = lobby.get("started_at")
+
+    for uid, st in lobby["players"].items():
+        solved = sum(1 for w in st["per_word"] if w["solved_at"])
+        total_guesses = sum(len(w["guesses"]) for w in st["per_word"])
+        if started_at:
+            end_time = st.get("finished_at") or now
+            total_secs = max(0, int((end_time - started_at).total_seconds()))
+        else:
+            total_secs = 0
+        rows.append(
+            {
+                "user_id": uid,
+                "username": st["username"],
+                "solved": solved,
+                "total_guesses": total_guesses,
+                "total_time_seconds": total_secs,
+            }
+        )
+
+    # Sort: most solved, then least time, then least guesses
+    rows.sort(
+        key=lambda r: (-r["solved"], r["total_time_seconds"], r["total_guesses"])
+    )
+    for i, row in enumerate(rows, start=1):
+        row["rank"] = i
+    return rows
+
 
 # --- HELPER FUNCTIONS ---
 
@@ -177,6 +331,21 @@ def broadcast_update(event_type, data):
 def index():
     return redirect(url_for('market'))
 
+
+@app.route('/wordle')
+def wordle_page():
+    """Competitive Wordle arena landing page."""
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    code = request.args.get("code", "").strip().upper() or ""
+    return render_template(
+        "wordle.html",
+        active_page="wordle",
+        lobby_code=code,
+        npcs=[],
+        **get_location_ambiance("wordle"),
+    )
+
 def _lootbox_image_exists(set_name: str, tier: str, name: str) -> bool:
     """Case-insensitive existence check for lootbox PNGs."""
     rel_dir = os.path.join(set_name, tier)
@@ -227,6 +396,237 @@ def api_gold():
     player = run_async(get_player_stats(session['user_id']))
     if player: return {"success": True, "gold": player['balance']}
     return {"success": False, "error": "Player not found"}, 404
+
+
+# --- WORDLE ARENA API ---
+
+@app.route("/api/wordle/create", methods=["POST"])
+def api_wordle_create():
+    if "user_id" not in session:
+        return {"success": False, "error": "Not logged in"}, 401
+    user_id = session["user_id"]
+    username = session.get("username") or "Player"
+
+    # Generate unique lobby code
+    code = _wordle_generate_lobby_code()
+    while code in ACTIVE_WORDLE_LOBBIES:
+        code = _wordle_generate_lobby_code()
+
+    words = _wordle_pick_words(10)
+    now = datetime.datetime.utcnow()
+    lobby = {
+        "code": code,
+        "host_user_id": user_id,
+        "host_username": username,
+        "status": "waiting",  # waiting | in_progress | finished
+        "created_at": now,
+        "started_at": None,
+        "finished_at": None,
+        "word_list": words,
+        "players": {},
+    }
+    ACTIVE_WORDLE_LOBBIES[code] = lobby
+    _wordle_ensure_player(lobby, user_id, username)
+
+    return {"success": True, "code": code}
+
+
+@app.route("/api/wordle/join", methods=["POST"])
+def api_wordle_join():
+    if "user_id" not in session:
+        return {"success": False, "error": "Not logged in"}, 401
+    data = request.get_json() or {}
+    code = str(data.get("code", "")).strip().upper()
+    if not code:
+        return {"success": False, "error": "Missing lobby code."}, 400
+
+    lobby = ACTIVE_WORDLE_LOBBIES.get(code)
+    if not lobby:
+        return {"success": False, "error": "Lobby not found."}, 404
+    if lobby.get("status") != "waiting":
+        return {"success": False, "error": "Game already started."}, 409
+
+    user_id = session["user_id"]
+    username = session.get("username") or "Player"
+    state = _wordle_ensure_player(lobby, user_id, username)
+
+    scoreboard = _wordle_build_scoreboard(lobby)
+    return {
+        "success": True,
+        "lobby": {
+            "code": lobby["code"],
+            "status": lobby["status"],
+            "host_user_id": lobby["host_user_id"],
+            "word_count": len(lobby["word_list"]),
+            "player_count": len(lobby["players"]),
+        },
+        "you": {
+            "user_id": user_id,
+            "username": state["username"],
+            "is_host": lobby["host_user_id"] == user_id,
+        },
+        "scoreboard": scoreboard,
+    }
+
+
+@app.route("/api/wordle/start", methods=["POST"])
+def api_wordle_start():
+    if "user_id" not in session:
+        return {"success": False, "error": "Not logged in"}, 401
+    data = request.get_json() or {}
+    code = str(data.get("code", "")).strip().upper()
+    lobby = ACTIVE_WORDLE_LOBBIES.get(code)
+    if not lobby:
+        return {"success": False, "error": "Lobby not found."}, 404
+
+    user_id = session["user_id"]
+    if lobby["host_user_id"] != user_id:
+        return {"success": False, "error": "Only the lobby host can start the game."}, 403
+    if lobby["status"] != "waiting":
+        return {"success": False, "error": "Game already started."}, 409
+    if not lobby["players"]:
+        return {"success": False, "error": "No players in lobby."}, 400
+
+    lobby["status"] = "in_progress"
+    lobby["started_at"] = datetime.datetime.utcnow()
+    return {"success": True}
+
+
+@app.route("/api/wordle/state")
+def api_wordle_state():
+    if "user_id" not in session:
+        return {"success": False, "error": "Not logged in"}, 401
+    code = str(request.args.get("code", "")).strip().upper()
+    lobby = ACTIVE_WORDLE_LOBBIES.get(code)
+    if not lobby:
+        return {"success": False, "error": "Lobby not found."}, 404
+
+    user_id = session["user_id"]
+    if user_id not in lobby["players"]:
+        return {"success": False, "error": "You are not part of this lobby."}, 403
+
+    state = lobby["players"][user_id]
+    now = datetime.datetime.utcnow()
+    scoreboard = _wordle_build_scoreboard(lobby, now=now)
+
+    words_payload = []
+    for idx, word_state in enumerate(state["per_word"]):
+        secret = lobby["word_list"][idx]
+        guesses_payload = []
+        for g in word_state["guesses"]:
+            guesses_payload.append(
+                {"guess": g, "pattern": _wordle_eval(secret, g)}
+            )
+        words_payload.append(
+            {
+                "guesses": guesses_payload,
+                "solved": bool(word_state["solved_at"]),
+                "failed": bool(word_state["failed"]),
+            }
+        )
+
+    you = {
+        "user_id": user_id,
+        "username": state["username"],
+        "is_host": lobby["host_user_id"] == user_id,
+        "current_index": state["current_index"],
+        "finished": bool(state.get("finished_at")),
+        "word_count": len(lobby["word_list"]),
+        "words": words_payload,
+    }
+
+    lobby_info = {
+        "code": lobby["code"],
+        "status": lobby["status"],
+        "host_user_id": lobby["host_user_id"],
+        "word_count": len(lobby["word_list"]),
+        "player_count": len(lobby["players"]),
+    }
+
+    return {"success": True, "lobby": lobby_info, "you": you, "scoreboard": scoreboard}
+
+
+@app.route("/api/wordle/guess", methods=["POST"])
+def api_wordle_guess():
+    if "user_id" not in session:
+        return {"success": False, "error": "Not logged in"}, 401
+    data = request.get_json() or {}
+    code = str(data.get("code", "")).strip().upper()
+    raw_guess = str(data.get("guess", "")).strip().lower()
+
+    if len(raw_guess) != 5 or not raw_guess.isalpha():
+        return {"success": False, "error": "Guess must be a 5-letter word."}, 400
+
+    lobby = ACTIVE_WORDLE_LOBBIES.get(code)
+    if not lobby:
+        return {"success": False, "error": "Lobby not found."}, 404
+    if lobby["status"] != "in_progress":
+        return {"success": False, "error": "Game not in progress."}, 409
+
+    user_id = session["user_id"]
+    if user_id not in lobby["players"]:
+        return {"success": False, "error": "You are not part of this lobby."}, 403
+
+    state = lobby["players"][user_id]
+    if state.get("finished_at"):
+        return {"success": False, "error": "You have already finished this game."}, 409
+
+    idx = state["current_index"]
+    if idx >= len(lobby["word_list"]):
+        state["finished_at"] = state.get("finished_at") or datetime.datetime.utcnow()
+        return {"success": False, "error": "No more words remaining."}, 409
+
+    word_state = state["per_word"][idx]
+    # If somehow already solved/failed this index, advance once
+    if word_state["solved_at"] or word_state["failed"]:
+        state["current_index"] += 1
+        return {"success": False, "error": "Advancing to next word, try again."}, 409
+
+    # Apply guess
+    secret = lobby["word_list"][idx]
+    pattern = _wordle_eval(secret, raw_guess)
+    word_state["guesses"].append(raw_guess)
+
+    solved_this_word = False
+    failed_this_word = False
+
+    if raw_guess == secret:
+        solved_this_word = True
+        word_state["solved_at"] = datetime.datetime.utcnow()
+        state["current_index"] += 1
+    elif len(word_state["guesses"]) >= 6:
+        failed_this_word = True
+        word_state["failed"] = True
+        state["current_index"] += 1
+
+    # Check if player has finished all words
+    if state["current_index"] >= len(lobby["word_list"]) and not state.get("finished_at"):
+        state["finished_at"] = datetime.datetime.utcnow()
+
+    # If every player finished, mark lobby as finished
+    if lobby["status"] == "in_progress":
+        all_done = all(
+            (p.get("finished_at") is not None)
+            or (p["current_index"] >= len(lobby["word_list"]))
+            for p in lobby["players"].values()
+        )
+        if all_done:
+            lobby["status"] = "finished"
+            lobby["finished_at"] = datetime.datetime.utcnow()
+
+    now = datetime.datetime.utcnow()
+    scoreboard = _wordle_build_scoreboard(lobby, now=now)
+
+    return {
+        "success": True,
+        "pattern": pattern,
+        "word_index": idx,
+        "solved_this_word": solved_this_word,
+        "failed_this_word": failed_this_word,
+        "current_index": state["current_index"],
+        "lobby_status": lobby["status"],
+        "scoreboard": scoreboard,
+    }
 
 # --- AUTHENTICATION & PROFILE ---
 
