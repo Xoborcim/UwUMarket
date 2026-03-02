@@ -164,7 +164,7 @@ def _wordle_generate_lobby_code(length: int = 5) -> str:
     return "".join(random.choice(alphabet) for _ in range(length))
 
 
-def _wordle_pick_words(count: int = 10):
+def _wordle_pick_words(count: int = 5):
     pool = WORDLE_WORDS
     if count >= len(pool):
         # If asking for more than we have, just shuffle and slice
@@ -413,7 +413,7 @@ def api_wordle_create():
     while code in ACTIVE_WORDLE_LOBBIES:
         code = _wordle_generate_lobby_code()
 
-    words = _wordle_pick_words(10)
+    words = _wordle_pick_words(5)
     now = datetime.datetime.utcnow()
     lobby = {
         "code": code,
