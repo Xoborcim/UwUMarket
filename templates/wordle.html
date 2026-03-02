@@ -924,6 +924,16 @@
         if (gameArea.style.display === "none") return;
         if (guessRow && guessRow.style.display === "none") return;
 
+        // If the user is typing in any input/textarea/contenteditable, don't hijack keys.
+        // This prevents double-typing when focus is inside the guess input.
+        const active = document.activeElement;
+        if (active) {
+            const tag = (active.tagName || "").toUpperCase();
+            if (tag === "INPUT" || tag === "TEXTAREA" || active.isContentEditable) {
+                return;
+            }
+        }
+
         const k = ev.key;
         if (k === "Backspace") {
             ev.preventDefault();
