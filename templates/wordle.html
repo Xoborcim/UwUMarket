@@ -1,0 +1,732 @@
+{% extends "base.html" %}
+
+{% block title %}Wordle Arena{% endblock %}
+
+{% block extra_head %}
+<style>
+    .wordle-page {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 24px 16px;
+    }
+    .wordle-header {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 20px;
+    }
+    .wordle-header h1 {
+        margin: 0;
+        font-size: 1.8rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        color: var(--accent-color);
+    }
+    .wordle-header p {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.95rem;
+        max-width: 60ch;
+    }
+    .wordle-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr);
+        gap: 20px;
+    }
+    @media (max-width: 960px) {
+        .wordle-layout {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+    .wordle-card {
+        background: var(--card-bg);
+        border-radius: 16px;
+        border: 1px solid var(--border-color);
+        padding: 20px 18px;
+    }
+    .wordle-card h2 {
+        margin: 0 0 12px 0;
+        font-size: 1.1rem;
+    }
+    .wordle-form-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+    .wordle-form-row input[type="text"] {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        background: #020617;
+        color: var(--text-main);
+        font-size: 0.95rem;
+        min-width: 120px;
+        flex: 1;
+    }
+    .btn-wordle {
+        padding: 10px 16px;
+        border-radius: 999px;
+        border: none;
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 0.9rem;
+        background: linear-gradient(90deg, var(--accent-color), #c026d3);
+        color: #fff;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
+        white-space: nowrap;
+    }
+    .btn-wordle:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+    }
+    .btn-secondary {
+        background: #1f2937;
+        box-shadow: none;
+    }
+    .btn-small {
+        padding: 8px 14px;
+        font-size: 0.8rem;
+    }
+    .wordle-lobby-meta {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+    }
+    .wordle-code-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid var(--border-color);
+        font-size: 0.85rem;
+        margin-top: 4px;
+    }
+    .wordle-code-pill code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.9rem;
+        letter-spacing: 0.16em;
+    }
+    .wordle-status {
+        font-size: 0.85rem;
+        margin-top: 4px;
+    }
+    .wordle-status span.badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        margin-right: 6px;
+    }
+    .badge-waiting {
+        background: rgba(59, 130, 246, 0.18);
+        color: #93c5fd;
+    }
+    .badge-running {
+        background: rgba(34, 197, 94, 0.2);
+        color: #86efac;
+    }
+    .badge-finished {
+        background: rgba(234, 179, 8, 0.22);
+        color: #fde68a;
+    }
+    .wordle-players-list {
+        margin: 8px 0 0 0;
+        padding-left: 1.1rem;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
+    .wordle-players-list li span.host-label {
+        color: var(--accent-color);
+        font-weight: 600;
+        margin-left: 4px;
+    }
+    .wordle-error {
+        margin-top: 8px;
+        font-size: 0.82rem;
+        color: #fca5a5;
+        min-height: 1.1em;
+    }
+    .wordle-grid {
+        display: grid;
+        grid-template-rows: repeat(6, 1fr);
+        gap: 6px;
+        margin-top: 16px;
+    }
+    .wordle-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+    }
+    .wordle-cell {
+        height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        font-weight: 700;
+        font-size: 1.1rem;
+        text-transform: uppercase;
+        background: #020617;
+        color: var(--text-main);
+    }
+    .cell-correct {
+        background: #16a34a;
+        border-color: #22c55e;
+        color: #ecfdf5;
+    }
+    .cell-present {
+        background: #eab308;
+        border-color: #facc15;
+        color: #fefce8;
+    }
+    .cell-absent {
+        background: #111827;
+        border-color: #1f2937;
+        color: #6b7280;
+    }
+    .wordle-guess-input {
+        margin-top: 14px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .wordle-guess-input input[type="text"] {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        background: #020617;
+        color: var(--text-main);
+        font-size: 1rem;
+        width: 150px;
+        text-transform: uppercase;
+    }
+    .wordle-guess-hint {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+    }
+    .wordle-scoreboard-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+    }
+    .wordle-scoreboard-table th,
+    .wordle-scoreboard-table td {
+        padding: 6px 8px;
+        text-align: left;
+    }
+    .wordle-scoreboard-table th {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--border-color);
+    }
+    .wordle-scoreboard-table tr:nth-child(odd) td {
+        background: rgba(15, 23, 42, 0.7);
+    }
+    .wordle-scoreboard-table tr:nth-child(even) td {
+        background: rgba(15, 23, 42, 0.5);
+    }
+    .wordle-scoreboard-table tr.me td {
+        border-left: 2px solid var(--accent-color);
+    }
+    .wordle-scoreboard-table td.rank {
+        font-weight: 700;
+        width: 32px;
+    }
+    .wordle-scoreboard-table td.time {
+        font-variant-numeric: tabular-nums;
+    }
+    .wordle-subtitle {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wordle-page">
+    <div class="wordle-header">
+        <h1>Wordle Arena</h1>
+        <p>Join a lobby and race other adventurers through the same 10-word Wordle gauntlet. Fewer guesses and faster clears rank higher.</p>
+    </div>
+
+    <div class="wordle-layout">
+        <div class="wordle-card">
+            <h2>Lobby</h2>
+            <div id="wordle-lobby-initial" {% if lobby_code %}style="display:none"{% endif %}>
+                <p class="wordle-subtitle">Create a new lobby and share the code, or join an existing one.</p>
+                <div class="wordle-form-row">
+                    <button class="btn-wordle" id="btn-create-lobby" type="button">Create Lobby</button>
+                </div>
+                <div class="wordle-form-row">
+                    <input type="text" id="join-code-input" placeholder="Enter lobby code" maxlength="8">
+                    <button class="btn-wordle btn-secondary" id="btn-join-lobby" type="button">Join</button>
+                </div>
+                <div class="wordle-error" id="wordle-error"></div>
+            </div>
+
+            <div id="wordle-lobby-active" {% if not lobby_code %}style="display:none"{% endif %}>
+                <div class="wordle-lobby-meta">
+                    <div>Lobby code:</div>
+                    <div class="wordle-code-pill">
+                        <span>Share this:</span>
+                        <code id="lobby-code-display">{{ lobby_code }}</code>
+                    </div>
+                </div>
+                <div class="wordle-status" id="wordle-status-line">
+                    <!-- filled by JS -->
+                </div>
+                <ul class="wordle-players-list" id="wordle-players-list">
+                    <!-- filled by JS -->
+                </ul>
+                <div class="wordle-error" id="wordle-error-active"></div>
+
+                <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn-wordle btn-small" id="btn-start-game" type="button" style="display:none;">Start Game</button>
+                    <button class="btn-wordle btn-small btn-secondary" id="btn-copy-code" type="button">Copy Code</button>
+                </div>
+
+                <div id="wordle-game-area" style="margin-top:18px; display:none;">
+                    <div class="wordle-subtitle" id="wordle-progress-label"></div>
+                    <div class="wordle-grid" id="wordle-grid">
+                        <!-- grid rendered by JS -->
+                    </div>
+                    <div class="wordle-guess-input" id="wordle-guess-input-row">
+                        <input type="text" id="guess-input" maxlength="5" autocomplete="off" placeholder="TYPE" />
+                        <button class="btn-wordle btn-small" id="btn-submit-guess" type="button">Submit Guess</button>
+                        <span class="wordle-guess-hint">5 letters · up to 6 guesses per word.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="wordle-card">
+            <h2>Scoreboard</h2>
+            <p class="wordle-subtitle">Sorted by words solved, then total time, then guesses used.</p>
+            <table class="wordle-scoreboard-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Player</th>
+                        <th>Solved</th>
+                        <th>Guesses</th>
+                        <th>Time (s)</th>
+                    </tr>
+                </thead>
+                <tbody id="wordle-scoreboard-body">
+                    <tr><td colspan="5" style="padding:10px 8px; color:var(--text-muted);">Join a lobby to see live rankings.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+    const lobbyCodeFromServer = "{{ lobby_code }}".trim().toUpperCase();
+
+    const initialPanel = document.getElementById("wordle-lobby-initial");
+    const activePanel = document.getElementById("wordle-lobby-active");
+    const errorInitial = document.getElementById("wordle-error");
+    const errorActive = document.getElementById("wordle-error-active");
+    const joinInput = document.getElementById("join-code-input");
+    const lobbyCodeDisplay = document.getElementById("lobby-code-display");
+    const statusLine = document.getElementById("wordle-status-line");
+    const playersList = document.getElementById("wordle-players-list");
+    const scoreboardBody = document.getElementById("wordle-scoreboard-body");
+    const startButton = document.getElementById("btn-start-game");
+    const copyButton = document.getElementById("btn-copy-code");
+    const gameArea = document.getElementById("wordle-game-area");
+    const progressLabel = document.getElementById("wordle-progress-label");
+    const gridEl = document.getElementById("wordle-grid");
+    const guessRow = document.getElementById("wordle-guess-input-row");
+    const guessInput = document.getElementById("guess-input");
+    const submitGuessBtn = document.getElementById("btn-submit-guess");
+
+    let currentLobbyCode = lobbyCodeFromServer || "";
+    let pollTimer = null;
+    let isHost = false;
+    let latestState = null;
+
+    function showInitial() {
+        initialPanel.style.display = "";
+        activePanel.style.display = "none";
+        clearError();
+        stopPolling();
+    }
+
+    function showActive(code) {
+        currentLobbyCode = code.toUpperCase();
+        if (lobbyCodeDisplay) lobbyCodeDisplay.textContent = currentLobbyCode;
+        initialPanel.style.display = "none";
+        activePanel.style.display = "";
+        clearError();
+    }
+
+    function setError(msg, active) {
+        if (active) {
+            errorActive.textContent = msg || "";
+        } else {
+            errorInitial.textContent = msg || "";
+        }
+    }
+
+    function clearError() {
+        errorInitial.textContent = "";
+        errorActive.textContent = "";
+    }
+
+    async function createLobby() {
+        clearError();
+        try {
+            const res = await fetch("/api/wordle/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                setError(data.error || "Failed to create lobby.", false);
+                return;
+            }
+            window.location.href = "/wordle?code=" + encodeURIComponent(data.code);
+        } catch (e) {
+            setError("Network error creating lobby.", false);
+        }
+    }
+
+    async function joinLobbyByCode(rawCode) {
+        clearError();
+        const code = (rawCode || "").trim().toUpperCase();
+        if (!code) {
+            setError("Enter a lobby code.", false);
+            return;
+        }
+        try {
+            const res = await fetch("/api/wordle/join", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code }),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                setError(data.error || "Unable to join lobby.", false);
+                return;
+            }
+            window.location.href = "/wordle?code=" + encodeURIComponent(code);
+        } catch (e) {
+            setError("Network error joining lobby.", false);
+        }
+    }
+
+    async function joinLobbyActive(code) {
+        clearError();
+        try {
+            const res = await fetch("/api/wordle/join", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code }),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                setError(data.error || "Unable to join lobby.", true);
+                return;
+            }
+            isHost = !!data.you && !!data.you.is_host;
+            renderLobbyMeta(data.lobby, data.scoreboard, data.you);
+            startPolling();
+        } catch (e) {
+            setError("Network error joining lobby.", true);
+        }
+    }
+
+    function formatStatusBadge(status) {
+        const s = (status || "").toLowerCase();
+        if (s === "waiting") {
+            return '<span class="badge badge-waiting">Waiting</span> Waiting for players and host to start.';
+        }
+        if (s === "in_progress") {
+            return '<span class="badge badge-running">In Progress</span> Race is live.';
+        }
+        if (s === "finished") {
+            return '<span class="badge badge-finished">Finished</span> Game over. You can still view the final standings.';
+        }
+        return '<span class="badge badge-waiting">Unknown</span>';
+    }
+
+    function renderLobbyMeta(lobby, scoreboard, you) {
+        latestState = { lobby, scoreboard, you, full: latestState && latestState.full };
+        // status + host
+        let html = "";
+        html += formatStatusBadge(lobby.status);
+        html += ' &nbsp; Host: <strong>' + (scoreboard && scoreboard.length
+            ? (scoreboard.find(r => r.user_id === lobby.host_user_id)?.username || "Unknown")
+            : "Unknown") + "</strong>";
+        statusLine.innerHTML = html;
+
+        // players list
+        playersList.innerHTML = "";
+        if (scoreboard && scoreboard.length) {
+            scoreboard.forEach(row => {
+                const li = document.createElement("li");
+                li.textContent = row.username || ("Player " + row.user_id);
+                if (row.user_id === lobby.host_user_id) {
+                    const span = document.createElement("span");
+                    span.className = "host-label";
+                    span.textContent = "HOST";
+                    li.appendChild(span);
+                }
+                playersList.appendChild(li);
+            });
+        } else {
+            const li = document.createElement("li");
+            li.textContent = "No players yet.";
+            playersList.appendChild(li);
+        }
+
+        // scoreboard
+        renderScoreboard(scoreboard, you);
+
+        // host controls
+        if (you && you.is_host && lobby.status === "waiting") {
+            startButton.style.display = "";
+        } else {
+            startButton.style.display = "none";
+        }
+
+        // game area visibility
+        if (lobby.status === "in_progress" || lobby.status === "finished") {
+            gameArea.style.display = "";
+        } else {
+            gameArea.style.display = "none";
+        }
+    }
+
+    function renderScoreboard(scoreboard, you) {
+        scoreboardBody.innerHTML = "";
+        if (!scoreboard || !scoreboard.length) {
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = 5;
+            td.style.padding = "10px 8px";
+            td.style.color = "var(--text-muted)";
+            td.textContent = "Waiting for players…";
+            tr.appendChild(td);
+            scoreboardBody.appendChild(tr);
+            return;
+        }
+        scoreboard.forEach(row => {
+            const tr = document.createElement("tr");
+            if (you && row.user_id === you.user_id) {
+                tr.classList.add("me");
+            }
+            const rankTd = document.createElement("td");
+            rankTd.className = "rank";
+            rankTd.textContent = row.rank;
+            tr.appendChild(rankTd);
+
+            const nameTd = document.createElement("td");
+            nameTd.textContent = row.username || ("Player " + row.user_id);
+            tr.appendChild(nameTd);
+
+            const solvedTd = document.createElement("td");
+            solvedTd.textContent = row.solved;
+            tr.appendChild(solvedTd);
+
+            const guessesTd = document.createElement("td");
+            guessesTd.textContent = row.total_guesses;
+            tr.appendChild(guessesTd);
+
+            const timeTd = document.createElement("td");
+            timeTd.className = "time";
+            timeTd.textContent = row.total_time_seconds;
+            tr.appendChild(timeTd);
+
+            scoreboardBody.appendChild(tr);
+        });
+    }
+
+    function renderGrid(you) {
+        if (!you) {
+            gridEl.innerHTML = "";
+            progressLabel.textContent = "";
+            guessRow.style.display = "none";
+            return;
+        }
+        const idx = you.current_index || 0;
+        const total = you.word_count || 0;
+        const finished = !!you.finished;
+        progressLabel.textContent = finished
+            ? "You have finished all words."
+            : "Word " + (idx + 1) + " of " + total;
+
+        const currentWord = you.words && you.words[idx] ? you.words[idx] : { guesses: [] };
+        const guesses = currentWord.guesses || [];
+
+        const rows = 6;
+        const cols = 5;
+        gridEl.innerHTML = "";
+        for (let r = 0; r < rows; r++) {
+            const rowDiv = document.createElement("div");
+            rowDiv.className = "wordle-row";
+            let letters = "";
+            let pattern = null;
+            if (r < guesses.length) {
+                letters = (guesses[r].guess || "").toUpperCase();
+                pattern = guesses[r].pattern || [];
+            }
+            for (let c = 0; c < cols; c++) {
+                const cell = document.createElement("div");
+                cell.className = "wordle-cell";
+                if (letters && c < letters.length) {
+                    cell.textContent = letters[c];
+                } else {
+                    cell.textContent = "";
+                }
+                if (pattern && pattern[c]) {
+                    if (pattern[c] === "correct") cell.classList.add("cell-correct");
+                    else if (pattern[c] === "present") cell.classList.add("cell-present");
+                    else if (pattern[c] === "absent") cell.classList.add("cell-absent");
+                }
+                rowDiv.appendChild(cell);
+            }
+            gridEl.appendChild(rowDiv);
+        }
+
+        if (finished || latestState.lobby.status === "finished") {
+            guessRow.style.display = "none";
+        } else {
+            guessRow.style.display = "";
+        }
+    }
+
+    async function pollState() {
+        if (!currentLobbyCode) return;
+        try {
+            const res = await fetch("/api/wordle/state?code=" + encodeURIComponent(currentLobbyCode));
+            const data = await res.json();
+            if (!data.success) {
+                setError(data.error || "Lobby error.", true);
+                stopPolling();
+                return;
+            }
+            latestState = data;
+            isHost = !!data.you && !!data.you.is_host;
+            renderLobbyMeta(data.lobby, data.scoreboard, data.you);
+            renderGrid(data.you);
+        } catch (e) {
+            // network hiccup; keep trying
+        }
+    }
+
+    function startPolling() {
+        if (pollTimer) return;
+        pollState();
+        pollTimer = setInterval(pollState, 1500);
+    }
+
+    function stopPolling() {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+    }
+
+    async function startGame() {
+        clearError();
+        if (!currentLobbyCode) return;
+        try {
+            const res = await fetch("/api/wordle/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code: currentLobbyCode }),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                setError(data.error || "Unable to start game.", true);
+                return;
+            }
+            pollState();
+        } catch (e) {
+            setError("Network error starting game.", true);
+        }
+    }
+
+    async function submitGuess() {
+        clearError();
+        if (!currentLobbyCode) return;
+        const val = (guessInput.value || "").trim().toLowerCase();
+        if (val.length !== 5) {
+            setError("Guess must be 5 letters.", true);
+            return;
+        }
+        try {
+            const res = await fetch("/api/wordle/guess", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code: currentLobbyCode, guess: val }),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                setError(data.error || "Guess rejected.", true);
+                return;
+            }
+            guessInput.value = "";
+            // Let polling pick up the new state; also refresh immediately
+            pollState();
+        } catch (e) {
+            setError("Network error submitting guess.", true);
+        }
+    }
+
+    function copyCode() {
+        if (!currentLobbyCode) return;
+        try {
+            navigator.clipboard.writeText(currentLobbyCode);
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    // Wire up events
+    document.getElementById("btn-create-lobby")?.addEventListener("click", createLobby);
+    document.getElementById("btn-join-lobby")?.addEventListener("click", function() {
+        joinLobbyByCode(joinInput.value);
+    });
+    joinInput?.addEventListener("keyup", function(ev) {
+        if (ev.key === "Enter") {
+            joinLobbyByCode(joinInput.value);
+        }
+    });
+    startButton?.addEventListener("click", startGame);
+    copyButton?.addEventListener("click", copyCode);
+    submitGuessBtn?.addEventListener("click", submitGuess);
+    guessInput?.addEventListener("keyup", function(ev) {
+        if (ev.key === "Enter") {
+            submitGuess();
+        }
+    });
+
+    // Init flow
+    if (lobbyCodeFromServer) {
+        showActive(lobbyCodeFromServer);
+        joinLobbyActive(lobbyCodeFromServer);
+    } else {
+        showInitial();
+    }
+})();
+</script>
+{% endblock %}
+
