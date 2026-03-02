@@ -335,57 +335,221 @@ class ElectionVoteView(discord.ui.View):
             await self.message.edit(embed=embed, view=self)
         except: pass
 
+
+
+HEX_POOL = ["E9", "CB", "2A", "7D", "1C", "55", "FF", "BD", "3E", "A7"]
+GRID_SIZE = 5
 class HackerGame(discord.ui.View):
-    def __init__(self, user):
-        super().__init__(timeout=15) 
+    def __init__(self, user, hacker_payout_range=(360, 720)):
+        super().__init__(timeout=25)
         self.user = user
-        self.words = ["firewall", "encryption", "database", "algorithm", "network", "password", "security", "mainframe"]
-        self.target = random.choice(self.words)
-        
-        chars = list(self.target)
-        random.shuffle(chars)
-        self.scrambled = ''.join(chars)
-        
-        options = random.sample([w for w in self.words if w != self.target], 3)
-        options.append(self.target)
-        random.shuffle(options)
-        
-        for i, word in enumerate(options):
-            btn = discord.ui.Button(label=word, style=discord.ButtonStyle.secondary, custom_id=f"hack_{i}")
-            btn.callback = self.make_callback(word)
-            self.add_item(btn)
-            
-    def get_embed(self):
-        return discord.Embed(
-            title="💻 Mainframe Hack", 
-            description=f"Bypass the firewall! Unscramble the security key:\n\n# `{self.scrambled}`\n\n*You have 15 seconds!*", 
-            color=0x2ecc71
-        )
-        
-    def make_callback(self, word):
-        async def cb(interaction: discord.Interaction):
-            if interaction.user.id != self.user.id: return await interaction.response.defer()
-            self.clear_items()
-            
-            if word == self.target:
-                payout = random.randint(360, 720)
-                net, tax = await db.process_work(self.user.id, payout) # Added Await!
-                embed = discord.Embed(title="💻 Access Granted", description=f"Firewall bypassed! You stole **${net:,.2f}**.\n*(Laundered Tax: ${tax:,.2f})*", color=0x2ecc71)
+        self.hacker_payout_range = hacker_payout_range
+        self.ended = False
+        self.message = None
+
+        # --- Generate grid ---
+        self.grid = [
+            [random.choice(HEX_POOL) for _ in range(GRID_SIZE)]
+            for _ in range(GRID_SIZE)
+        ]
+
+        # --- Generate a guaranteed-solvable target sequence ---
+        # Walk a valid path through the grid so we know it's always beatable
+        self.target = self._generate_solvable_sequence()
+
+        # State
+        self.entered = []           # sequence entered so far
+        self.axis = "row"           # "row" = picking from a row, "col" = picking from a col
+        self.locked_index = 0       # which row or col is currently active
+        self.used_cells = set()     # (r, c) cells already clicked
+
+        self._build_grid()
+
+    def _generate_solvable_sequence(self):
+        """Walk a valid alternating row/col path and collect the hex values."""
+        seq = []
+        axis = "row"
+        locked = 0  # start locked to row 0
+        used = set()
+
+        for _ in range(4):
+            if axis == "row":
+                candidates = [(locked, c) for c in range(GRID_SIZE) if (locked, c) not in used]
             else:
-                await db.process_work(self.user.id, 0) # Added Await!
-                embed = discord.Embed(title="🚨 Access Denied", description="Incorrect key. You were locked out and traced!", color=0xe74c3c)
-                
-            await interaction.response.edit_message(embed=embed, view=self)
-            await force_board_update(interaction.client) 
-            self.stop()
-        return cb
-        
-    async def on_timeout(self):
+                candidates = [(r, locked) for r in range(GRID_SIZE) if (r, locked) not in used]
+
+            if not candidates:
+                break
+
+            r, c = random.choice(candidates)
+            seq.append(self.grid[r][c])
+            used.add((r, c))
+            locked = c if axis == "row" else r
+            axis = "col" if axis == "row" else "row"
+
+        return seq
+
+    def _build_grid(self):
+        """Render the 5x5 grid as Discord buttons. Row 4 is reserved for a status/abort row."""
         self.clear_items()
-        await db.process_work(self.user.id, 0) # Added Await!
-        embed = discord.Embed(title="🚨 Timeout", description="You took too long. Security locked you out.", color=0xe74c3c)
-        try: await self.message.edit(embed=embed, view=self)
-        except: pass
+
+        for r in range(GRID_SIZE):
+            for c in range(GRID_SIZE):
+                code = self.grid[r][c]
+                cell_id = f"bp_{r}_{c}"
+                is_used = (r, c) in self.used_cells
+
+                # Determine if this cell is currently selectable
+                selectable = self._is_selectable(r, c) and not is_used and not self.ended
+
+                if is_used:
+                    style = discord.ButtonStyle.secondary
+                elif selectable:
+                    style = discord.ButtonStyle.primary
+                else:
+                    style = discord.ButtonStyle.secondary
+
+                btn = discord.ui.Button(
+                    label=code if not is_used else "██",
+                    style=style,
+                    custom_id=cell_id,
+                    row=r,
+                    disabled=(not selectable or is_used or self.ended)
+                )
+                btn.callback = self._make_cell_callback(r, c)
+                self.add_item(btn)
+
+    def _is_selectable(self, r, c):
+        """Returns True if this cell can be selected given the current axis/locked_index."""
+        if self.axis == "row":
+            return r == self.locked_index
+        else:
+            return c == self.locked_index
+
+    def _make_cell_callback(self, r, c):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.user.id:
+                return await interaction.response.defer()
+            if self.ended:
+                return await interaction.response.defer()
+            if not self._is_selectable(r, c) or (r, c) in self.used_cells:
+                return await interaction.response.defer()
+
+            chosen_code = self.grid[r][c]
+            expected_code = self.target[len(self.entered)]
+
+            self.used_cells.add((r, c))
+            # Advance axis lock: if we were row-locked, next lock is this column, and vice versa
+            self.locked_index = c if self.axis == "row" else r
+            self.axis = "col" if self.axis == "row" else "row"
+
+            if chosen_code == expected_code:
+                self.entered.append(chosen_code)
+
+                if len(self.entered) == len(self.target):
+                    self.ended = True
+                    self.clear_items()
+                    payout = random.randint(*self.hacker_payout_range)
+                    net, tax = await db.process_work(self.user.id, payout)
+                    embed = self._get_embed(status="success", net=net, tax=tax)
+                    await interaction.response.edit_message(embed=embed, view=self)
+                    await force_board_update(interaction.client)
+                    self.stop()
+                else:
+                    self._build_grid()
+                    await interaction.response.edit_message(embed=self._get_embed(), view=self)
+            else:
+              
+                self.ended = True
+                self.clear_items()
+                await db.process_work(self.user.id, 0)
+                embed = self._get_embed(status="fail_wrong")
+                await interaction.response.edit_message(embed=embed, view=self)
+                self.stop()
+
+        return callback
+
+    def _get_embed(self, status="playing", net=0.0, tax=0.0):
+        # Progress bar: show entered codes vs target slots
+        progress_parts = []
+        for i, code in enumerate(self.target):
+            if i < len(self.entered):
+                progress_parts.append(f"~~`{code}`~~")   # crossed off
+            elif i == len(self.entered):
+                progress_parts.append(f"**`{code}`**")   # current target
+            else:
+                progress_parts.append(f"`{code}`")        # upcoming
+
+        progress_str = "  →  ".join(progress_parts)
+
+        # Axis hint
+        axis_hint = (
+            f"Select from **ROW {self.locked_index + 1}** →"
+            if self.axis == "row"
+            else f"↓ Select from **COLUMN {self.locked_index + 1}**"
+        )
+
+        if status == "playing":
+            embed = discord.Embed(
+                title="💻 BREACH PROTOCOL",
+                description=(
+                    f"Enter the sequence in order.\n"
+                    f"**Alternates between row-lock and column-lock.**\n\n"
+                    f"**Sequence:** {progress_str}\n\n"
+                    f"⏱️ **25 seconds** | {axis_hint}"
+                ),
+                color=0x00ff9f
+            )
+            embed.set_footer(text=f"Highlighted buttons = valid selections this turn")
+
+        elif status == "success":
+            embed = discord.Embed(
+                title="💻 ACCESS GRANTED",
+                description=(
+                    f"**Sequence:** {progress_str}\n\n"
+                    f"Mainframe breached. Funds siphoned.\n\n"
+                    f"**Payout:** ${net:,.2f}\n"
+                    f"*(Laundered Tax: ${tax:,.2f})*"
+                ),
+                color=0x00ff9f
+            )
+
+        elif status == "fail_wrong":
+            embed = discord.Embed(
+                title="🚨 BREACH FAILED — WRONG CODE",
+                description=(
+                    f"**Sequence:** {progress_str}\n\n"
+                    f"Incorrect code entered. ICE detected you and locked the system." #LMAO ICE HAHAHA
+
+                ),
+                color=0xe74c3c
+            )
+
+        elif status == "timeout":
+            embed = discord.Embed(
+                title="🚨 BREACH FAILED — TIMEOUT",
+                description=(
+                    f"**Sequence:** {progress_str}\n\n"
+                    f"Buffer overflow. You ran out of time and were traced."
+                ),
+                color=0xe74c3c
+            )
+
+        return embed
+
+    def get_embed(self):
+        return self._get_embed(status="playing")
+
+    async def on_timeout(self):
+        if not self.ended:
+            self.ended = True
+            self.clear_items()
+            await db.process_work(self.user.id, 0)
+            embed = self._get_embed(status="timeout")
+            try:
+                await self.message.edit(embed=embed, view=self)
+            except Exception:
+                pass
 
 # ==========================================
 #               THE COG
@@ -522,6 +686,7 @@ class Jobs(commands.GroupCog, group_name="career", group_description="Make money
         elif job_data['type'] == "hacker":
             view = HackerGame(interaction.user)
             await interaction.response.send_message(embed=view.get_embed(), view=view)
+            view.message = await interaction.original_response()
             
         else: 
             net, tax = await db.process_work(interaction.user.id, job_data['payout']) # Added Await!
