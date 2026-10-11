@@ -1,3 +1,8 @@
+import aiosqlite
+
+from database import DB_NAME
+
+
 async def buy_shares(user_id, market_id, outcome_label, investment):
     if investment < 0.01: return False, "Minimum bet is $0.01"
     investment = round(investment, 2)

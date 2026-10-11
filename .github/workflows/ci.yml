@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt ruff==0.17.0
+      - name: Lint
+        run: ruff check .
+      - name: Compile
+        run: python -m compileall -q .
+      - name: Import check
+        run: python -c "import database, engine, cogs.casino, cogs.guilds, cogs.items, cogs.jobs, cogs.persona, cogs.rpg, cogs.tournaments, cogs.utilities"
