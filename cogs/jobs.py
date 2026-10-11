@@ -482,16 +482,16 @@ class BreachProtocolGame(discord.ui.View):
                     self.stop()
             except Exception as e:
                 # Failsafe so the interaction is always acknowledged and doesn't time out
-                print(f\"[BreachProtocolGame] Button error: {e}\")
+                print(f"[BreachProtocolGame] Button error: {e}")
                 try:
                     if not interaction.response.is_done():
                         await interaction.response.send_message(
-                            \"❌ Something went wrong handling this hack action. Please try again.\",
+                            "❌ Something went wrong handling this hack action. Please try again.",
                             ephemeral=True
                         )
                     else:
                         await interaction.followup.send(
-                            \"❌ Something went wrong handling this hack action. Please try again.\",
+                            "❌ Something went wrong handling this hack action. Please try again.",
                             ephemeral=True
                         )
                 except Exception:

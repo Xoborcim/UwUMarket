@@ -26,4 +26,16 @@ Risk your hard-earned wages in highly interactive, UI-driven gambling games.
 * **Russian Roulette:** A high-stakes, winner-takes-all multiplayer survival game.
 * **Unique Games:** Custom games like *Jad's Belly Slap*, Slots, and a Daily Server Lottery.
 
+## 🚀 Setup
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # fill in every value
+python main.py         # Discord bot (or: python launcher.py for auto-update)
+python app.py          # web dashboard on port 5000
+```
+
+All variables in `.env.example` are required; the bot and dashboard exit with a clear message if one is missing.
+
 ---

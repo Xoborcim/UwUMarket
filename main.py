@@ -10,11 +10,24 @@ import datetime
 
 # 1. Setup
 load_dotenv()
-TOKEN = os.getenv('DISCORD_TOKEN')
-MARKET_CHANNEL_ID = int(os.getenv('MARKET_CHANNEL_ID')) 
-CLOSED_CHANNEL_ID = int(os.getenv('CLOSED_CHANNEL_ID')) 
-LEADERBOARD_CHANNEL_ID = int(os.getenv('LEADERBOARD_CHANNEL_ID'))
-BOTSPAM_CHANNEL_ID = int(os.getenv('BOTSPAM_CHANNEL_ID'))
+def _require_env(name):
+    value = os.getenv(name)
+    if not value:
+        raise SystemExit(f"Missing required environment variable {name}. See .env.example.")
+    return value
+
+def _require_int_env(name):
+    value = _require_env(name)
+    try:
+        return int(value)
+    except ValueError:
+        raise SystemExit(f"Environment variable {name} must be a numeric Discord channel ID, got {value!r}.")
+
+TOKEN = _require_env('DISCORD_TOKEN')
+MARKET_CHANNEL_ID = _require_int_env('MARKET_CHANNEL_ID')
+CLOSED_CHANNEL_ID = _require_int_env('CLOSED_CHANNEL_ID')
+LEADERBOARD_CHANNEL_ID = _require_int_env('LEADERBOARD_CHANNEL_ID')
+BOTSPAM_CHANNEL_ID = _require_int_env('BOTSPAM_CHANNEL_ID')
 
 class MarketBot(commands.Bot):
     def __init__(self):

@@ -16,11 +16,17 @@ load_dotenv()
 app = Flask(__name__)
 
 # Fetch the secrets from .env
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'default-secret-key')
-CLIENT_ID = os.getenv('CLIENT_ID')
-CLIENT_SECRET = os.getenv('CLIENT_SECRET')
-REDIRECT_URI = os.getenv('REDIRECT_URI')
-DB_NAME = os.getenv('DB_NAME')
+def _require_env(name):
+    value = os.getenv(name)
+    if not value:
+        raise SystemExit(f"Missing required environment variable {name}. See .env.example.")
+    return value
+
+app.secret_key = _require_env('FLASK_SECRET_KEY')
+CLIENT_ID = _require_env('CLIENT_ID')
+CLIENT_SECRET = _require_env('CLIENT_SECRET')
+REDIRECT_URI = _require_env('REDIRECT_URI')
+DB_NAME = _require_env('DB_NAME')
 
 # Initialize SocketIO with eventlet for high-concurrency background tasks
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
